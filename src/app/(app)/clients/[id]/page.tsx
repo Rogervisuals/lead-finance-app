@@ -1,0 +1,432 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { selectClientByIdForUser } from "@/lib/supabase/schema-compat";
+import {
+  formatCurrency,
+  formatHourlyRate,
+  formatISODate,
+  formatISODateTime,
+  safeRate,
+} from "@/lib/finance/format";
+import { IncomeAmountDisplay } from "@/components/display/IncomeAmountDisplay";
+import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
+
+export const dynamic = "force-dynamic";
+
+function sumIncomeConverted(
+  rows: Array<{ amount_converted?: string | number | null | undefined }>
+) {
+  return rows.reduce((acc, r) => acc + Number(r.amount_converted ?? 0), 0);
+}
+
+function sumHours(rows: Array<{ hours: string | number | null | undefined }>) {
+  return rows.reduce((acc, r) => acc + Number(r.hours ?? 0), 0);
+}
+
+export default async function ClientSummaryPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const clientId = params.id;
+  const settings = await getOrCreateUserFinancialSettings(user.id);
+  const vatEnabled = settings.vat_enabled;
+  const vatRate = settings.vat_percentage / 100;
+  const baseCurrency = settings.base_currency;
+
+  const { client, hasCompanyLink } = await selectClientByIdForUser(
+    supabase,
+    user.id,
+    clientId
+  );
+
+  if (!client) redirect("/clients");
+
+  const { data: linkedCompany } =
+    hasCompanyLink && client.company_id
+      ? await supabase
+          .from("companies")
+          .select("id,name")
+          .eq("id", client.company_id)
+          .eq("user_id", user.id)
+          .single()
+      : { data: null as { id: string; name: string } | null };
+
+  const [
+    { data: projects, error: projectsError },
+    { data: incomeRows, error: incomeError },
+    { data: sameNameClients, error: sameNameError },
+  ] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id,name,status,start_date,end_date,created_at")
+      .eq("client_id", clientId)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("income")
+      .select(
+        "id,date,amount_original,amount_converted,currency,description,project_id"
+      )
+      .eq("client_id", clientId)
+      .eq("user_id", user.id)
+      .order("date", { ascending: false })
+      .limit(100),
+    supabase
+      .from("clients")
+      .select("id,email,company")
+      .eq("user_id", user.id)
+      .eq("name", client.name),
+  ]);
+
+  if (projectsError) throw new Error(projectsError.message);
+  if (incomeError) throw new Error(incomeError.message);
+  if (sameNameError) throw new Error(sameNameError.message);
+
+  const projectIds = (projects ?? []).map((p: any) => p.id);
+
+  const { data: hourRows } = await supabase
+    .from("hours")
+    .select("id,project_id,client_id,start_time,end_time,hours,notes")
+    .eq("user_id", user.id)
+    .eq("client_id", clientId)
+    .order("start_time", { ascending: false })
+    .limit(200);
+
+  const incomeTotal = sumIncomeConverted(incomeRows ?? []);
+  const hoursTotal = sumHours(hourRows ?? []);
+  const overallRate = safeRate(incomeTotal, hoursTotal);
+  // Net in base currency (`amount_converted`); original currency shown per row.
+  const incomeNet = incomeTotal;
+  const incomeGross = vatEnabled
+    ? incomeNet * (1 + vatRate)
+    : incomeNet;
+  const vatAmount = vatEnabled ? incomeNet * vatRate : 0;
+
+  const incomeByProject = new Map<string, number>();
+  for (const r of incomeRows ?? []) {
+    const pid = (r as any).project_id as string | null;
+    if (!pid) continue;
+    incomeByProject.set(
+      pid,
+      (incomeByProject.get(pid) ?? 0) + Number((r as any).amount_converted ?? 0)
+    );
+  }
+
+  const hoursByProject = new Map<string, number>();
+  let hoursClientOnly = 0;
+  for (const r of hourRows ?? []) {
+    const pid = (r as any).project_id as string | null;
+    if (pid) {
+      hoursByProject.set(
+        pid,
+        (hoursByProject.get(pid) ?? 0) + Number((r as any).hours ?? 0)
+      );
+    } else {
+      hoursClientOnly += Number((r as any).hours ?? 0);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="text-sm text-zinc-500">
+            <Link href="/clients" className="hover:underline">
+              Clients
+            </Link>{" "}
+            / <span className="text-zinc-300">{client.name}</span>
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold">{client.name}</h1>
+          <div className="mt-1 text-sm text-zinc-400">
+            {client.email ? <span>{client.email}</span> : null}
+            {client.email && (linkedCompany || client.company) ? (
+              <span className="mx-2">•</span>
+            ) : null}
+            {linkedCompany ? (
+              <Link
+                href={`/companies/${linkedCompany.id}`}
+                className="text-sky-300 hover:underline"
+              >
+                {linkedCompany.name}
+              </Link>
+            ) : client.company ? (
+              <span>{client.company}</span>
+            ) : null}
+          </div>
+          <div className="mt-1 text-xs text-zinc-500">
+            Client ID: <span className="text-zinc-400">{String(client.id).slice(0, 8)}…</span>
+          </div>
+          {client.notes ? (
+            <p className="mt-2 max-w-2xl text-sm text-zinc-400">{client.notes}</p>
+          ) : null}
+
+          {(sameNameClients?.length ?? 0) > 1 ? (
+            <div className="mt-3 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
+              Multiple clients share the name “{client.name}”. Your projects may be linked to a
+              different one:
+              <div className="mt-2 flex flex-wrap gap-2">
+                {sameNameClients!.map((c: any) => (
+                  <Link
+                    key={c.id}
+                    href={`/clients/${c.id}`}
+                    className={`rounded-md border px-2 py-1 text-xs hover:bg-amber-950/30 ${
+                      c.id === client.id
+                        ? "border-amber-700/60 text-amber-100"
+                        : "border-amber-900/40 text-amber-200"
+                    }`}
+                  >
+                    {String(c.id).slice(0, 8)}…{c.email ? ` • ${c.email}` : ""}{c.company ? ` • ${c.company}` : ""}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex gap-2">
+          <Link
+            href={`/clients/${clientId}/edit`}
+            className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
+          >
+            Edit client
+          </Link>
+          <Link
+            href="/hours/add"
+            className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
+          >
+            Add hours
+          </Link>
+        </div>
+      </div>
+
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Projects"
+          value={String((projects ?? []).length)}
+          accent="text-sky-300"
+          border="border-sky-900/40"
+        />
+        <StatCard
+          title={vatEnabled ? "Income (all time, incl VAT)" : "Income (all time)"}
+          value={formatCurrency(incomeGross, baseCurrency)}
+          accent="text-emerald-300"
+          border="border-emerald-900/50"
+        />
+        <StatCard
+          title="Hours (all time)"
+          value={hoursTotal.toFixed(2)}
+          accent="text-amber-300"
+          border="border-amber-900/40"
+        />
+        <StatCard
+          title="Hourly rate"
+          value={formatHourlyRate(overallRate, baseCurrency)}
+          accent="text-zinc-50"
+          border="border-zinc-800"
+        />
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
+        <div className="rounded-xl border border-amber-900/40 bg-zinc-900/20 p-4">
+          <div className="text-sm text-zinc-400">VAT ({settings.vat_percentage}%)</div>
+          <div className="mt-2 text-xl font-semibold text-amber-300">
+            {formatCurrency(vatAmount, baseCurrency)}
+          </div>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+          <div className="text-sm text-zinc-400">Net income (ex VAT)</div>
+          <div className="mt-2 text-xl font-semibold text-zinc-50">
+            {formatCurrency(incomeNet, baseCurrency)}
+          </div>
+        </div>
+      </section>
+
+      {!vatEnabled ? (
+        <div className="rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
+          VAT disabled
+        </div>
+      ) : null}
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+        <h2 className="mb-3 text-sm font-semibold text-zinc-200">Projects</h2>
+        {projects?.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-zinc-500">
+                <tr>
+                  <th className="py-2">Project</th>
+                  <th className="py-2">Status</th>
+                  <th className="py-2 text-right">Income</th>
+                  <th className="py-2 text-right">Hours</th>
+                  <th className="py-2 text-right">Rate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800">
+                {projects.map((p: any) => (
+                  <tr key={p.id}>
+                    <td className="py-2 text-zinc-200">{p.name}</td>
+                    <td className="py-2 text-zinc-400">{p.status ?? "—"}</td>
+                    <td className="py-2 text-right text-zinc-200">
+                      {formatCurrency(incomeByProject.get(p.id) ?? 0, baseCurrency)}
+                    </td>
+                    <td className="py-2 text-right text-zinc-200">
+                      {(hoursByProject.get(p.id) ?? 0).toFixed(2)}
+                    </td>
+                    <td className="py-2 text-right text-zinc-200">
+                      {formatHourlyRate(
+                        safeRate(
+                          incomeByProject.get(p.id) ?? 0,
+                          hoursByProject.get(p.id) ?? 0
+                        ),
+                        baseCurrency
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {hoursClientOnly > 0 ? (
+                  <tr key="client-only-hours">
+                    <td className="py-2 text-zinc-300 italic">No project</td>
+                    <td className="py-2 text-zinc-500">—</td>
+                    <td className="py-2 text-right text-zinc-500">—</td>
+                    <td className="py-2 text-right text-zinc-200">
+                      {hoursClientOnly.toFixed(2)}
+                    </td>
+                    <td className="py-2 text-right text-zinc-500">—</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
+            No projects for this client yet.
+          </div>
+        )}
+      </section>
+
+      <section className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-zinc-200">
+            Income
+          </h2>
+          {incomeRows?.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-zinc-500">
+                  <tr>
+                    <th className="py-2">Date</th>
+                    <th className="py-2">Project</th>
+                    <th className="py-2">Description</th>
+                    <th className="py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {(incomeRows ?? []).slice(0, 20).map((r: any) => {
+                    const projectName =
+                      r.project_id
+                        ? (projects ?? []).find((p: any) => p.id === r.project_id)?.name ?? "—"
+                        : "—";
+                    return (
+                      <tr key={r.id}>
+                        <td className="py-2 text-zinc-300">
+                          {formatISODate(r.date)}
+                        </td>
+                        <td className="py-2 text-zinc-200">{projectName}</td>
+                        <td className="py-2 text-zinc-400">
+                          {r.description ?? "—"}
+                        </td>
+                        <td className="py-2 text-right">
+                          <IncomeAmountDisplay
+                            row={r}
+                            baseCurrency={baseCurrency}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
+              No income for this client yet.
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-zinc-200">Hours</h2>
+          {hourRows?.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-zinc-500">
+                  <tr>
+                    <th className="py-2">Project</th>
+                    <th className="py-2">Start</th>
+                    <th className="py-2">End</th>
+                    <th className="py-2 text-right">Hours</th>
+                    <th className="py-2">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {(hourRows ?? []).slice(0, 20).map((r: any) => {
+                    const projectName = r.project_id
+                      ? (projects ?? []).find((p: any) => p.id === r.project_id)?.name ?? "—"
+                      : "No project";
+                    return (
+                      <tr key={r.id} className="align-top">
+                        <td className="py-2 text-zinc-200">{projectName}</td>
+                        <td className="py-2 text-zinc-400">
+                          {formatISODateTime(r.start_time)}
+                        </td>
+                        <td className="py-2 text-zinc-400">
+                          {formatISODateTime(r.end_time)}
+                        </td>
+                        <td className="py-2 text-right text-zinc-200">
+                          {Number(r.hours ?? 0).toFixed(2)}
+                        </td>
+                        <td className="py-2 text-zinc-400">{r.notes ?? "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
+              No hours logged for this client yet.
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  accent,
+  border,
+}: {
+  title: string;
+  value: string;
+  accent: string;
+  border: string;
+}) {
+  return (
+    <div className={`rounded-xl border ${border} bg-zinc-900/20 p-4`}>
+      <div className="text-sm text-zinc-400">{title}</div>
+      <div className={`mt-2 text-xl font-semibold ${accent}`}>{value}</div>
+    </div>
+  );
+}
+
