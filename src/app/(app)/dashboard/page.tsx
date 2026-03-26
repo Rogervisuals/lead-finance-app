@@ -349,7 +349,7 @@ export default async function DashboardPage({
     <div className="space-y-6">
       <div className="flex flex-col items-center gap-3 md:flex-row md:items-end md:justify-between">
         <div className="w-full text-center md:w-auto md:text-left">
-          <h1 className="text-2xl font-semibold">Dashboard 1</h1>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
           <p className="mt-1 text-sm text-zinc-400">
             Summary for <span className="text-zinc-200">{label}</span>
           </p>
