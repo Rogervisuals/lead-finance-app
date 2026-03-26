@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { getThemeBootstrapInlineScript } from "@/lib/theme";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/react"; // optional maar aanrader
 import "./globals.css";
 import "./theme-light.css";
 
@@ -27,6 +29,10 @@ export default function RootLayout({
         <div className="min-h-screen bg-zinc-950 text-zinc-50">
           {children}
         </div>
+
+        {/* 👇 BELANGRIJK: onderaan body zetten */}
+        <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
