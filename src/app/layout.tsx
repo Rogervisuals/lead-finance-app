@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { getThemeBootstrapInlineScript } from "@/lib/theme";
 import "./globals.css";
+import "./theme-light.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -15,7 +17,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{ __html: getThemeBootstrapInlineScript() }}
+        />
+      </head>
       <body className={inter.className}>
         <div className="min-h-screen bg-zinc-950 text-zinc-50">
           {children}

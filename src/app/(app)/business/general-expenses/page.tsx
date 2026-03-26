@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { formatCurrency } from "@/lib/finance/format";
+import { CurrencyWithUsd } from "@/components/display/CurrencyWithUsd";
+import { GeneralExpenseQuickTemplateButtons } from "@/components/business/GeneralExpenseQuickTemplateButtons";
+import { IncomeCurrencyFields } from "@/components/forms/IncomeCurrencyFields";
+import { IncomeAmountDisplay } from "@/components/display/IncomeAmountDisplay";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 import {
   addGeneralExpenseTemplateFromExpenseAction,
-  createGeneralExpenseFromTemplateAction,
   createBusinessExpenseAction,
   deleteBusinessExpenseAction,
-  deleteGeneralExpenseTemplateAction,
 } from "../../server-actions/business-expenses";
 
 export const dynamic = "force-dynamic";
@@ -97,7 +98,7 @@ function expenseMatchesTemplate(
 export default async function GeneralExpensesPage({
   searchParams,
 }: {
-  searchParams?: { template_error?: string; range?: string };
+  searchParams?: { template_error?: string; range?: string; error?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -127,7 +128,9 @@ export default async function GeneralExpensesPage({
   const rowsQuery = (() => {
     let q = supabase
       .from("business_expenses")
-      .select("id,amount,date,category,notes,created_at")
+      .select(
+        "id,amount,amount_original,currency,exchange_rate,date,category,notes,created_at"
+      )
       .eq("user_id", user.id);
     if (kind === "month" && isoStart && isoEndExclusive) {
       q = q.gte("date", isoStart).lt("date", isoEndExclusive);
@@ -191,13 +194,19 @@ export default async function GeneralExpensesPage({
 
       <section className="rounded-xl border border-rose-900/40 bg-zinc-900/20 p-4 lg:p-5">
         <div className="text-sm text-zinc-400">Total spendings</div>
-        <div className="mt-2 text-3xl font-semibold tabular-nums text-rose-300 lg:text-4xl">
-          {formatCurrency(totalSpendings, baseCurrency)}
+        <div className="mt-2">
+          <CurrencyWithUsd
+            amount={totalSpendings}
+            currency={baseCurrency}
+            primaryClassName="text-3xl font-semibold tabular-nums text-rose-300 lg:text-4xl"
+            usdClassName="mt-1.5 text-sm font-medium tabular-nums text-rose-200/75"
+          />
         </div>
         <p className="mt-1 text-xs text-zinc-500">
           {kind === "all"
             ? "All recorded general expenses."
-            : `Expenses with a date in ${label}.`}
+            : `Expenses with a date in ${label}.`}{" "}
+          Totals use {baseCurrency} (foreign entries are converted).
         </p>
       </section>
 
@@ -205,25 +214,17 @@ export default async function GeneralExpensesPage({
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
           Add expense
         </h2>
+        {searchParams?.error === "exchange_rate" ? (
+          <div className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
+            Enter a positive exchange rate when the currency differs from your base
+            currency ({baseCurrency}).
+          </div>
+        ) : null}
         <form
           action={createBusinessExpenseAction}
           className="grid min-w-0 max-w-full gap-3 sm:grid-cols-2 [&>label]:min-w-0 [&>div]:min-w-0"
         >
-          <label className="min-w-0 space-y-1 sm:col-span-2">
-            <span className="text-sm text-zinc-300">Amount *</span>
-            <div className="relative min-w-0 max-w-full">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-zinc-400">
-                €
-              </span>
-              <input
-                required
-                name="amount"
-                type="number"
-                step="0.01"
-                className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 pl-7 text-sm outline-none focus:border-sky-500"
-              />
-            </div>
-          </label>
+          <IncomeCurrencyFields baseCurrency={baseCurrency} />
 
           <label className="block min-w-0 max-w-full space-y-1 overflow-hidden">
             <span className="text-sm text-zinc-300">Date *</span>
@@ -280,44 +281,10 @@ export default async function GeneralExpensesPage({
           </div>
         ) : null}
         {templates?.length ? (
-          <div className="flex flex-wrap gap-2">
-            {templates.map((t: any) => {
-              const labelNotes = (t.notes ?? "").trim();
-              const label = labelNotes
-                ? `${labelNotes} ${formatCurrency(Number(t.amount ?? 0))}`
-                : formatCurrency(Number(t.amount ?? 0));
-              return (
-                <div
-                  key={t.id}
-                  className="relative inline-flex max-w-full items-stretch"
-                >
-                  <form action={createGeneralExpenseFromTemplateAction}>
-                    <input type="hidden" name="template_id" value={t.id} />
-                    <button
-                      type="submit"
-                      className="rounded-md border border-zinc-800 bg-zinc-950/30 py-1.5 pl-3 pr-8 text-left text-xs text-zinc-200 hover:bg-zinc-950/50"
-                    >
-                      {label}
-                    </button>
-                  </form>
-                  <form
-                    action={deleteGeneralExpenseTemplateAction}
-                    className="absolute right-0 top-0"
-                  >
-                    <input type="hidden" name="template_id" value={t.id} />
-                    <button
-                      type="submit"
-                      title="Remove template"
-                      aria-label="Remove template"
-                      className="flex h-6 w-6 items-center justify-center rounded-tr-md text-sm leading-none text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-                    >
-                      ×
-                    </button>
-                  </form>
-                </div>
-              );
-            })}
-          </div>
+          <GeneralExpenseQuickTemplateButtons
+            templates={(templates ?? []) as any}
+            baseCurrency={baseCurrency}
+          />
         ) : (
           <div className="text-sm text-zinc-500">
             No templates yet. Use &quot;Add to regulars&quot; on an expense.
@@ -353,8 +320,19 @@ export default async function GeneralExpensesPage({
                     <td className="py-2 text-zinc-400">
                       {r.category ?? "General"}
                     </td>
-                    <td className="py-2 text-right tabular-nums text-rose-300 whitespace-nowrap">
-                      {formatCurrency(Number(r.amount ?? 0))}
+                    <td className="py-2 text-right whitespace-nowrap">
+                      <IncomeAmountDisplay
+                        row={{
+                          amount_original:
+                            r.amount_original != null
+                              ? r.amount_original
+                              : r.amount,
+                          amount_converted: r.amount,
+                          currency: r.currency ?? "EUR",
+                        }}
+                        baseCurrency={baseCurrency}
+                        accentClassName="text-rose-300"
+                      />
                     </td>
                     <td className="py-2 pl-8 text-zinc-400">{r.notes ?? "—"}</td>
                     <td className="py-2 text-right">

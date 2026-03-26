@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ClientProjectSelect } from "@/components/forms/ClientProjectSelect";
+import { IncomeCurrencyFields } from "@/components/forms/IncomeCurrencyFields";
+import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 import {
   deleteExpenseAction,
   updateExpenseAction,
@@ -10,8 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function EditExpensePage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams?: { error?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -19,12 +23,12 @@ export default async function EditExpensePage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: expense }, { data: clients }, { data: projects }] =
+  const [{ data: expense }, { data: clients }, { data: projects }, settings] =
     await Promise.all([
       supabase
         .from("expenses")
         .select(
-          "id,client_id,project_id,date,amount,currency,category,description"
+          "id,client_id,project_id,date,amount_original,currency,exchange_rate,amount_converted,category,description"
         )
         .eq("id", params.id)
         .eq("user_id", user.id)
@@ -39,9 +43,12 @@ export default async function EditExpensePage({
         .select("id,name,client_id")
         .eq("user_id", user.id)
         .order("name", { ascending: true }),
+      getOrCreateUserFinancialSettings(user.id),
     ]);
 
   if (!expense) redirect("/expenses");
+
+  const baseCurrency = settings.base_currency;
 
   return (
     <div className="min-w-0 space-y-6">
@@ -51,6 +58,12 @@ export default async function EditExpensePage({
       </div>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+        {searchParams?.error === "exchange_rate" ? (
+          <div className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
+            Enter a positive exchange rate when the currency differs from your base
+            currency ({baseCurrency}).
+          </div>
+        ) : null}
         <form action={updateExpenseAction} className="grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={expense.id} />
 
@@ -74,17 +87,12 @@ export default async function EditExpensePage({
             </div>
           </label>
 
-          <label className="space-y-1">
-            <span className="text-sm text-zinc-300">Amount *</span>
-            <input
-              required
-              name="amount"
-              type="number"
-              step="0.01"
-              defaultValue={expense.amount ?? 0}
-              className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
-            />
-          </label>
+          <IncomeCurrencyFields
+            baseCurrency={baseCurrency}
+            defaultCurrency={expense.currency ?? "EUR"}
+            defaultAmountOriginal={expense.amount_original ?? 0}
+            defaultExchangeRate={expense.exchange_rate ?? 1}
+          />
 
           <label className="space-y-1">
             <span className="text-sm text-zinc-300">Category</span>

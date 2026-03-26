@@ -263,8 +263,10 @@ create table if not exists public.expenses (
   client_id uuid not null references public.clients(id) on delete cascade,
   project_id uuid references public.projects(id) on delete set null,
   date date not null,
-  amount numeric(12,2) not null,
-  currency char(3) not null default 'EUR',
+  amount_original numeric(12,2) not null,
+  currency varchar(8) not null default 'EUR',
+  amount_converted numeric(12,2) not null,
+  exchange_rate numeric(18,8) not null default 1,
   category text not null default 'General',
   description text,
   notes text,
@@ -272,6 +274,9 @@ create table if not exists public.expenses (
 );
 
 alter table public.expenses add column if not exists notes text;
+alter table public.expenses add column if not exists amount_original numeric(12,2);
+alter table public.expenses add column if not exists amount_converted numeric(12,2);
+alter table public.expenses add column if not exists exchange_rate numeric(18,8);
 alter table public.expenses drop column if exists vendor;
 
 alter table public.expenses enable row level security;
@@ -393,6 +398,17 @@ create table if not exists public.business_expenses (
   notes text,
   created_at timestamptz not null default now()
 );
+
+alter table public.business_expenses add column if not exists amount_original numeric(12,2);
+alter table public.business_expenses add column if not exists currency varchar(8) default 'EUR';
+alter table public.business_expenses add column if not exists exchange_rate numeric(18,8) default 1;
+
+update public.business_expenses
+set
+  amount_original = amount,
+  currency = 'EUR',
+  exchange_rate = 1
+where amount_original is null;
 
 alter table public.business_expenses enable row level security;
 create index if not exists business_expenses_user_id_idx
@@ -558,4 +574,33 @@ create policy "feedback_delete_admin"
   using (
     lower(trim(coalesce((auth.jwt() ->> 'email')::text, ''))) = 'roger33354@hotmail.com'
   );
+
+-- =========================
+-- AI usage limits (per user per day)
+-- =========================
+create table if not exists public.user_ai_usage (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  date date not null,
+  requests_count integer not null default 0,
+  last_request_at timestamptz,
+  primary key (user_id, date)
+);
+
+alter table public.user_ai_usage enable row level security;
+
+drop policy if exists "user_ai_usage_select_own" on public.user_ai_usage;
+create policy "user_ai_usage_select_own"
+  on public.user_ai_usage for select
+  using (user_id = auth.uid());
+
+drop policy if exists "user_ai_usage_insert_own" on public.user_ai_usage;
+create policy "user_ai_usage_insert_own"
+  on public.user_ai_usage for insert
+  with check (user_id = auth.uid());
+
+drop policy if exists "user_ai_usage_update_own" on public.user_ai_usage;
+create policy "user_ai_usage_update_own"
+  on public.user_ai_usage for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
 

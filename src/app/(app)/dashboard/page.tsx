@@ -1,13 +1,14 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  formatCurrency,
-  formatHourlyRate,
-  formatISODate,
-  safeRate,
-} from "@/lib/finance/format";
+import { formatISODate, safeRate } from "@/lib/finance/format";
 import { IncomeAmountDisplay } from "@/components/display/IncomeAmountDisplay";
+import {
+  CurrencyWithUsd,
+  HourlyRateWithUsd,
+} from "@/components/display/CurrencyWithUsd";
+import { StatCard } from "@/components/display/StatCard";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 import { updateFinancialSettingsAction } from "../server-actions/settings";
 
@@ -15,10 +16,6 @@ export const dynamic = "force-dynamic";
 
 function toISODateOnly(d: Date) {
   return d.toISOString().slice(0, 10);
-}
-
-function sumAmounts(rows: Array<{ amount: string | number | null | undefined }>) {
-  return rows.reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
 }
 
 function sumIncomeConverted(
@@ -152,12 +149,16 @@ export default async function DashboardPage({
     (kind === "all"
       ? supabase
           .from("expenses")
-          .select("amount,date,currency,description,project_id,client_id")
+          .select(
+            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
+          )
           .eq("user_id", userId)
           .order("date", { ascending: false })
       : supabase
           .from("expenses")
-          .select("amount,date,currency,description,project_id,client_id")
+          .select(
+            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
+          )
           .eq("user_id", userId)
           .gte("date", isoStart!)
           .lt("date", isoEndExclusive!)
@@ -184,13 +185,17 @@ export default async function DashboardPage({
     (kind === "all"
       ? supabase
           .from("expenses")
-          .select("amount,date,currency,description,project_id,client_id")
+          .select(
+            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
+          )
           .eq("user_id", userId)
           .order("date", { ascending: false })
           .limit(5)
       : supabase
           .from("expenses")
-          .select("amount,date,currency,description,project_id,client_id")
+          .select(
+            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
+          )
           .eq("user_id", userId)
           .gte("date", isoStart!)
           .lt("date", isoEndExclusive!)
@@ -221,7 +226,7 @@ export default async function DashboardPage({
   const projectById = new Map((projects ?? []).map((p) => [p.id, p]));
 
   const incomeMonth = sumIncomeConverted(incomeMonthRows ?? []);
-  const expensesMonth = sumAmounts(expenseMonthRows ?? []);
+  const expensesMonth = sumIncomeConverted(expenseMonthRows ?? []);
 
   const projectToClient = new Map<string, string>(
     (projects ?? []).map((p: any) => [p.id, p.client_id])
@@ -478,68 +483,129 @@ export default async function DashboardPage({
           Main financial block
         </h2>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 xl:items-stretch">
-          <div className="rounded-xl border border-sky-900/40 bg-zinc-950/50 p-6 md:col-span-2 xl:col-span-2 xl:row-span-2">
+          <div
+            className="rounded-xl border border-sky-900/40 bg-zinc-950/50 p-6 md:col-span-2 xl:col-span-2 xl:row-span-2"
+            data-fin-card="net"
+          >
             <div className="text-sm text-zinc-400">Net (month)</div>
-            <div className="mt-4 text-5xl font-semibold text-sky-300">
-              {formatCurrency(netMonth, baseCurrency)}
+            <div className="mt-4">
+              <CurrencyWithUsd
+                amount={netMonth}
+                currency={baseCurrency}
+                primaryClassName="text-5xl font-semibold text-sky-300"
+                usdClassName="mt-1.5 text-sm font-medium tabular-nums text-sky-200/75"
+              />
             </div>
           </div>
-          <div className="rounded-xl border border-emerald-900/40 bg-zinc-950/30 p-4">
+          <div
+            className="rounded-xl border border-emerald-900/40 bg-zinc-950/30 p-4"
+            data-fin-card="income"
+          >
             <div className="text-sm text-zinc-400">Income (excl VAT)</div>
-            <div className="mt-2 text-lg font-semibold text-emerald-300">
-              {formatCurrency(incomeExclVat, baseCurrency)}
+            <div className="mt-2">
+              <CurrencyWithUsd
+                amount={incomeExclVat}
+                currency={baseCurrency}
+                primaryClassName="text-lg font-semibold text-emerald-300"
+                usdClassName="mt-1 text-xs tabular-nums text-emerald-200/70"
+              />
             </div>
           </div>
-          <div className="rounded-xl border border-rose-900/40 bg-zinc-950/30 p-4">
+          <div
+            className="rounded-xl border border-rose-900/40 bg-zinc-950/30 p-4"
+            data-fin-card="expenses"
+          >
             <div className="text-sm text-zinc-400">Expenses (month)</div>
-            <div className="mt-2 text-lg font-semibold text-rose-300">
-              {formatCurrency(expensesMonth, baseCurrency)}
+            <div className="mt-2">
+              <CurrencyWithUsd
+                amount={expensesMonth}
+                currency={baseCurrency}
+                primaryClassName="text-lg font-semibold text-rose-300"
+                usdClassName="mt-1 text-xs tabular-nums text-rose-200/70"
+              />
             </div>
           </div>
-          <div className="rounded-xl border border-amber-900/40 bg-zinc-950/30 p-4">
+          <div
+            className="rounded-xl border border-amber-900/40 bg-zinc-950/30 p-4"
+            data-fin-card="tax"
+          >
             <div className="text-sm text-zinc-400">
               Estimated tax ({settings.tax_percentage}%)
             </div>
-            <div className="mt-2 text-lg font-semibold text-amber-300">
-              {formatCurrency(estimatedTax, baseCurrency)}
+            <div className="mt-2">
+              <CurrencyWithUsd
+                amount={estimatedTax}
+                currency={baseCurrency}
+                primaryClassName="text-lg font-semibold text-amber-300"
+                usdClassName="mt-1 text-xs tabular-nums text-amber-200/70"
+              />
             </div>
           </div>
-          <div className="rounded-xl border border-cyan-900/40 bg-zinc-950/30 p-4">
+          <div
+            className="rounded-xl border border-cyan-900/40 bg-zinc-950/30 p-4"
+            data-fin-card="safe-to-spend"
+          >
             <div className="text-sm text-zinc-400">Safe to spend</div>
-            <div className="mt-2 text-lg font-semibold text-cyan-300">
-              {formatCurrency(safeToSpend, baseCurrency)}
+            <div className="mt-2">
+              <CurrencyWithUsd
+                amount={safeToSpend}
+                currency={baseCurrency}
+                primaryClassName="text-lg font-semibold text-cyan-300"
+                usdClassName="mt-1 text-xs tabular-nums text-cyan-200/70"
+              />
             </div>
           </div>
         </div>
       </section>
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
-        <h2 className="mb-3 text-sm font-semibold text-zinc-200">Insights</h2>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/25 p-4">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <CompactInsightCard
-              icon="📈"
-              label="Best client"
-              value={
-                bestClient
-                  ? `${bestClient.name} (${formatHourlyRate(bestClient.rate, baseCurrency)})`
-                  : "—"
-              }
-            />
-            <CompactInsightCard
-              icon="📉"
-              label="Worst client"
-              value={
-                worstClient
-                  ? `${worstClient.name} (${formatHourlyRate(worstClient.rate, baseCurrency)})`
-                  : "—"
-              }
-            />
-            <CompactInsightCard
-              icon="⏱"
-              label="Avg hourly rate"
-              value={formatHourlyRate(avgRateAll)}
-            />
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4 sm:p-5">
+        <h2 className="mb-3 text-sm font-semibold text-zinc-200">
+          Insights
+        </h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+          <CompactInsightCard icon="📈" label="Best client" accent="emerald">
+            {bestClient ? (
+              <div className="flex flex-col gap-3">
+                <div className="text-sm font-medium leading-snug text-zinc-300">
+                  {bestClient.name}
+                </div>
+                <HourlyRateWithUsd
+                  rate={bestClient.rate}
+                  currency={baseCurrency}
+                  primaryClassName="text-2xl font-semibold tracking-tight text-emerald-300"
+                  usdClassName="mt-1.5 text-xs tabular-nums text-emerald-200/70"
+                />
+              </div>
+            ) : (
+              <span className="text-sm text-zinc-500">—</span>
+            )}
+          </CompactInsightCard>
+          <CompactInsightCard icon="📉" label="Worst client" accent="rose">
+            {worstClient ? (
+              <div className="flex flex-col gap-3">
+                <div className="text-sm font-medium leading-snug text-zinc-300">
+                  {worstClient.name}
+                </div>
+                <HourlyRateWithUsd
+                  rate={worstClient.rate}
+                  currency={baseCurrency}
+                  primaryClassName="text-2xl font-semibold tracking-tight text-rose-300"
+                  usdClassName="mt-1.5 text-xs tabular-nums text-rose-200/70"
+                />
+              </div>
+            ) : (
+              <span className="text-sm text-zinc-500">—</span>
+            )}
+          </CompactInsightCard>
+          <div className="sm:col-span-2">
+            <CompactInsightCard icon="⏱" label="Avg hourly rate" accent="sky">
+              <HourlyRateWithUsd
+                rate={avgRateAll}
+                currency={baseCurrency}
+                primaryClassName="text-2xl font-semibold tracking-tight text-sky-300"
+                usdClassName="mt-1.5 text-xs tabular-nums text-sky-200/75"
+              />
+            </CompactInsightCard>
           </div>
         </div>
       </section>
@@ -549,15 +615,31 @@ export default async function DashboardPage({
         <div className="grid gap-3 sm:grid-cols-2">
           <StatCard
             title="Total income (incl VAT)"
-            value={formatCurrency(incomeInclVat, baseCurrency)}
+            value={
+              <CurrencyWithUsd
+                amount={incomeInclVat}
+                currency={baseCurrency}
+                primaryClassName="text-xl font-semibold text-emerald-200"
+                usdClassName="mt-1 text-xs tabular-nums text-emerald-200/70"
+              />
+            }
             accent="text-emerald-200"
             border="border-emerald-900/40"
+            valueClassName="mt-2"
           />
           <StatCard
             title={`VAT (${settings.vat_percentage}%) to pay`}
-            value={formatCurrency(vatAmount, baseCurrency)}
+            value={
+              <CurrencyWithUsd
+                amount={vatAmount}
+                currency={baseCurrency}
+                primaryClassName="text-xl font-semibold text-amber-200"
+                usdClassName="mt-1 text-xs tabular-nums text-amber-200/70"
+              />
+            }
             accent="text-amber-200"
             border="border-amber-900/40"
+            valueClassName="mt-2"
           />
         </div>
       </section>
@@ -614,12 +696,11 @@ export default async function DashboardPage({
                             baseCurrency={baseCurrency}
                           />
                         ) : (
-                          <span className="text-rose-300">
-                            {formatCurrency(
-                              Number(r.amount ?? 0),
-                              r.currency ?? "EUR"
-                            )}
-                          </span>
+                          <IncomeAmountDisplay
+                            row={r}
+                            baseCurrency={baseCurrency}
+                            accentClassName="text-rose-300"
+                          />
                         )}
                       </td>
                     </tr>
@@ -634,41 +715,47 @@ export default async function DashboardPage({
   );
 }
 
-function StatCard({
-  title,
-  value,
-  accent,
-  border,
-}: {
-  title: string;
-  value: string;
-  accent: string;
-  border: string;
-}) {
-  return (
-    <div className={`rounded-xl border ${border} bg-zinc-900/20 p-4`}>
-      <div className="text-sm text-zinc-400">{title}</div>
-      <div className={`mt-2 text-xl font-semibold ${accent}`}>{value}</div>
-    </div>
-  );
-}
+/** Matches financial block cards: colored border + bg-zinc-950/30 */
+const insightAccentBorder: Record<
+  "emerald" | "rose" | "sky",
+  string
+> = {
+  emerald: "border-emerald-900/40",
+  rose: "border-rose-900/40",
+  sky: "border-sky-900/40",
+};
 
 function CompactInsightCard({
   icon,
   label,
-  value,
+  accent,
+  children,
 }: {
   icon: string;
   label: string;
-  value: string;
+  accent: keyof typeof insightAccentBorder;
+  children: ReactNode;
 }) {
   return (
-    <div className="rounded-md border border-zinc-800 bg-zinc-950/30 p-3">
-      <div className="text-xs text-zinc-400">
-        <span className="mr-1">{icon}</span>
-        {label}
+    <div
+      data-insight-card
+      data-insight-accent={accent}
+      className={`group flex h-full min-h-[9.5rem] flex-col rounded-xl border bg-zinc-950/30 p-4 shadow-sm transition-[box-shadow,border-color] duration-200 hover:shadow-md ${insightAccentBorder[accent]}`}
+    >
+      <div
+        className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500"
+        data-insight-label
+      >
+        <span aria-hidden className="text-sm opacity-90">
+          {icon}
+        </span>
+        <span>{label}</span>
       </div>
-      <div className="mt-1 text-sm font-semibold text-zinc-100">{value}</div>
+      <div
+        className="my-4 shrink-0 border-t border-zinc-800/80"
+        aria-hidden
+      />
+      <div className="flex flex-1 flex-col justify-start gap-0">{children}</div>
     </div>
   );
 }

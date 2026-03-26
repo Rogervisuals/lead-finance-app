@@ -5,17 +5,12 @@ import {
   createSupabaseServerActionClient,
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
+import { parseCurrencyAmountFromForm } from "@/lib/finance/income-currency";
+import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 
 function toNullableString(v: FormDataEntryValue | null) {
   const s = String(v ?? "").trim();
   return s ? s : null;
-}
-
-function toNullableNumber(v: FormDataEntryValue | null) {
-  const s = String(v ?? "").trim();
-  if (!s) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
 }
 
 async function normalizeProjectForClient({
@@ -50,6 +45,10 @@ export async function createExpenseAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const settings = await getOrCreateUserFinancialSettings(user.id);
+  const parsed = parseCurrencyAmountFromForm(formData, settings.base_currency);
+  if (!parsed) redirect("/expenses?error=exchange_rate");
+
   const client_id = String(formData.get("client_id") ?? "").trim();
   let project_id = toNullableString(formData.get("project_id"));
   project_id = await normalizeProjectForClient({
@@ -60,8 +59,6 @@ export async function createExpenseAction(formData: FormData) {
   });
 
   const date = String(formData.get("date") ?? "").trim();
-  const amount = toNullableNumber(formData.get("amount")) ?? 0;
-  const currency = String(formData.get("currency") ?? "EUR").trim() || "EUR";
   const category = toNullableString(formData.get("category")) ?? "General";
   const description = toNullableString(formData.get("description"));
 
@@ -70,8 +67,10 @@ export async function createExpenseAction(formData: FormData) {
     client_id,
     project_id,
     date,
-    amount,
-    currency,
+    amount_original: parsed.amount_original,
+    currency: parsed.currency,
+    amount_converted: parsed.amount_converted,
+    exchange_rate: parsed.exchange_rate,
     category,
     description,
   });
@@ -87,6 +86,12 @@ export async function updateExpenseAction(formData: FormData) {
   if (!user) redirect("/login");
 
   const id = String(formData.get("id") ?? "").trim();
+  const settings = await getOrCreateUserFinancialSettings(user.id);
+  const parsed = parseCurrencyAmountFromForm(formData, settings.base_currency);
+  if (!parsed) {
+    redirect(id ? `/expenses/${id}/edit?error=exchange_rate` : "/expenses?error=exchange_rate");
+  }
+
   const client_id = String(formData.get("client_id") ?? "").trim();
   let project_id = toNullableString(formData.get("project_id"));
   project_id = await normalizeProjectForClient({
@@ -97,8 +102,6 @@ export async function updateExpenseAction(formData: FormData) {
   });
 
   const date = String(formData.get("date") ?? "").trim();
-  const amount = toNullableNumber(formData.get("amount")) ?? 0;
-  const currency = String(formData.get("currency") ?? "EUR").trim() || "EUR";
   const category = toNullableString(formData.get("category")) ?? "General";
   const description = toNullableString(formData.get("description"));
 
@@ -108,8 +111,10 @@ export async function updateExpenseAction(formData: FormData) {
       client_id,
       project_id,
       date,
-      amount,
-      currency,
+      amount_original: parsed.amount_original,
+      currency: parsed.currency,
+      amount_converted: parsed.amount_converted,
+      exchange_rate: parsed.exchange_rate,
       category,
       description,
     })

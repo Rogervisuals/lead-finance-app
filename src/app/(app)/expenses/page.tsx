@@ -1,21 +1,31 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { formatCurrency, formatISODate } from "@/lib/finance/format";
+import { formatISODate } from "@/lib/finance/format";
+import { IncomeAmountDisplay } from "@/components/display/IncomeAmountDisplay";
 import { ClientProjectSelect } from "@/components/forms/ClientProjectSelect";
+import { IncomeCurrencyFields } from "@/components/forms/IncomeCurrencyFields";
 import {
   createExpenseAction,
   deleteExpenseAction,
 } from "../server-actions/expenses";
+import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 
 export const dynamic = "force-dynamic";
 
-export default async function ExpensesPage() {
+export default async function ExpensesPage({
+  searchParams,
+}: {
+  searchParams?: { error?: string };
+}) {
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const settings = await getOrCreateUserFinancialSettings(user.id);
+  const baseCurrency = settings.base_currency;
 
   const [{ data: clients }, { data: projects }, { data: expenseRows }] =
     await Promise.all([
@@ -32,7 +42,7 @@ export default async function ExpensesPage() {
       supabase
         .from("expenses")
         .select(
-          "id,date,amount,currency,category,description,client_id,project_id,created_at"
+          "id,date,amount_original,amount_converted,currency,category,description,client_id,project_id,created_at"
         )
         .eq("user_id", user.id)
         .order("date", { ascending: false })
@@ -55,6 +65,12 @@ export default async function ExpensesPage() {
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
           Add expense
         </h2>
+        {searchParams?.error === "exchange_rate" ? (
+          <div className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
+            Enter a positive exchange rate when the currency differs from your base
+            currency ({baseCurrency}).
+          </div>
+        ) : null}
         <form
           action={createExpenseAction}
           className="grid min-w-0 max-w-full gap-3 sm:grid-cols-2 [&>label]:min-w-0 [&>div]:min-w-0"
@@ -76,16 +92,7 @@ export default async function ExpensesPage() {
             </div>
           </label>
 
-          <label className="space-y-1">
-            <span className="text-sm text-zinc-300">Amount *</span>
-            <input
-              required
-              name="amount"
-              type="number"
-              step="0.01"
-              className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
-            />
-          </label>
+          <IncomeCurrencyFields baseCurrency={baseCurrency} />
 
           <label className="space-y-1">
             <span className="text-sm text-zinc-300">Category</span>
@@ -161,9 +168,11 @@ export default async function ExpensesPage() {
                       {r.description ?? "—"}
                     </td>
                     <td className="py-2 text-right">
-                      <span className="text-rose-300">
-                        {formatCurrency(Number(r.amount ?? 0), r.currency ?? "EUR")}
-                      </span>
+                      <IncomeAmountDisplay
+                        row={r}
+                        baseCurrency={baseCurrency}
+                        accentClassName="text-rose-300"
+                      />
                     </td>
                     <td className="py-2 text-right">
                       <div className="flex justify-end gap-2">

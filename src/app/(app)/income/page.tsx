@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  formatCurrency,
-  formatISODate,
-} from "@/lib/finance/format";
+import { formatISODate } from "@/lib/finance/format";
+import { CurrencyWithUsd } from "@/components/display/CurrencyWithUsd";
+import { StatCard } from "@/components/display/StatCard";
+import { IncomeQuickTemplateButtons } from "@/components/income/IncomeQuickTemplateButtons";
 import { ClientProjectSelect } from "@/components/forms/ClientProjectSelect";
 import { IncomeCurrencyFields } from "@/components/forms/IncomeCurrencyFields";
 import { IncomeAmountDisplay } from "@/components/display/IncomeAmountDisplay";
 import {
   addIncomeTemplateFromIncomeAction,
-  createIncomeFromTemplateAction,
   createIncomeAction,
   deleteIncomeAction,
   deleteIncomeTemplateAction,
@@ -117,8 +116,13 @@ export default async function IncomePage({
       <section className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-emerald-900/50 bg-zinc-900/20 p-4 lg:p-5">
           <div className="text-sm text-zinc-400">Income (excl VAT)</div>
-          <div className="mt-3 text-3xl font-semibold text-emerald-300 lg:text-4xl">
-            {formatCurrency(totalNet, baseCurrency)}
+          <div className="mt-3">
+            <CurrencyWithUsd
+              amount={totalNet}
+              currency={baseCurrency}
+              primaryClassName="text-3xl font-semibold text-emerald-300 lg:text-4xl"
+              usdClassName="mt-1.5 text-sm font-medium tabular-nums text-emerald-200/75"
+            />
           </div>
           <div className="mt-1 text-xs text-zinc-500">
             In {baseCurrency} (converted from foreign entries).
@@ -127,15 +131,31 @@ export default async function IncomePage({
         <div className="grid gap-3">
           <StatCard
             title={`VAT (${settings.vat_percentage}%)`}
-            value={formatCurrency(totalVat, baseCurrency)}
+            value={
+              <CurrencyWithUsd
+                amount={totalVat}
+                currency={baseCurrency}
+                primaryClassName="text-xl font-semibold text-amber-300"
+                usdClassName="mt-1 text-xs tabular-nums text-amber-200/70"
+              />
+            }
             accent="text-amber-300"
             border="border-amber-900/40"
+            valueClassName="mt-2"
           />
           <StatCard
             title={vatEnabled ? "Total income (incl VAT)" : "Total income"}
-            value={formatCurrency(totalGross, baseCurrency)}
+            value={
+              <CurrencyWithUsd
+                amount={totalGross}
+                currency={baseCurrency}
+                primaryClassName="text-xl font-semibold text-emerald-300"
+                usdClassName="mt-1 text-xs tabular-nums text-emerald-200/70"
+              />
+            }
             accent="text-emerald-300"
             border="border-emerald-900/50"
+            valueClassName="mt-2"
           />
         </div>
       </section>
@@ -212,48 +232,12 @@ export default async function IncomePage({
           </div>
         ) : null}
         {templates?.length ? (
-          <div className="flex flex-wrap gap-2">
-            {templates.map((t: any) => {
-              const clientName = clientById.get(t.client_id) ?? "Client";
-              const projectName = t.project_id
-                ? projectById.get(t.project_id)
-                : null;
-              const labelPrefix = projectName
-                ? `${clientName} / ${projectName}`
-                : clientName;
-              const label = `${labelPrefix} ${formatCurrency(Number(t.amount ?? 0), baseCurrency)}`;
-              return (
-                <div
-                  key={t.id}
-                  className="relative inline-flex max-w-full items-stretch"
-                >
-                  <form action={createIncomeFromTemplateAction}>
-                    <input type="hidden" name="template_id" value={t.id} />
-                    <button
-                      type="submit"
-                      className="rounded-md border border-zinc-800 bg-zinc-950/30 py-1.5 pl-3 pr-8 text-left text-xs text-zinc-200 hover:bg-zinc-950/50"
-                    >
-                      {label}
-                    </button>
-                  </form>
-                  <form
-                    action={deleteIncomeTemplateAction}
-                    className="absolute right-0 top-0"
-                  >
-                    <input type="hidden" name="template_id" value={t.id} />
-                    <button
-                      type="submit"
-                      title="Remove template"
-                      aria-label="Remove template"
-                      className="flex h-6 w-6 items-center justify-center rounded-tr-md text-sm leading-none text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-                    >
-                      ×
-                    </button>
-                  </form>
-                </div>
-              );
-            })}
-          </div>
+          <IncomeQuickTemplateButtons
+            templates={(templates ?? []) as any}
+            clientById={clientById}
+            projectById={projectById}
+            baseCurrency={baseCurrency}
+          />
         ) : (
           <div className="text-sm text-zinc-500">
             No templates yet. Use &quot;Add to regulars&quot; on an income item.
@@ -351,25 +335,6 @@ export default async function IncomePage({
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  accent,
-  border,
-}: {
-  title: string;
-  value: string;
-  accent: string;
-  border: string;
-}) {
-  return (
-    <div className={`rounded-xl border ${border} bg-zinc-900/20 p-4`}>
-      <div className="text-sm text-zinc-400">{title}</div>
-      <div className={`mt-2 text-xl font-semibold ${accent}`}>{value}</div>
     </div>
   );
 }

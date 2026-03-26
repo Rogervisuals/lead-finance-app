@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { safeRate } from "@/lib/finance/format";
 import {
-  formatCurrency,
-  formatHourlyRate,
-  safeRate,
-} from "@/lib/finance/format";
+  CurrencyWithUsd,
+  HourlyRateWithUsd,
+} from "@/components/display/CurrencyWithUsd";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 
 export const dynamic = "force-dynamic";
@@ -129,8 +129,13 @@ export default async function CompanyDetailPage({
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-emerald-900/50 bg-zinc-900/20 p-4">
           <div className="text-sm text-zinc-400">Total income (net)</div>
-          <div className="mt-2 text-2xl font-semibold text-emerald-300">
-            {formatCurrency(companyIncome, baseCurrency)}
+          <div className="mt-2">
+            <CurrencyWithUsd
+              amount={companyIncome}
+              currency={baseCurrency}
+              primaryClassName="text-2xl font-semibold text-emerald-300"
+              usdClassName="mt-1 text-sm tabular-nums text-emerald-200/75"
+            />
           </div>
         </div>
         <div className="rounded-xl border border-amber-900/40 bg-zinc-900/20 p-4">
@@ -141,8 +146,13 @@ export default async function CompanyDetailPage({
         </div>
         <div className="rounded-xl border border-sky-900/40 bg-zinc-900/20 p-4">
           <div className="text-sm text-zinc-400">Avg. hourly rate</div>
-          <div className="mt-2 text-2xl font-semibold text-sky-300">
-            {formatHourlyRate(companyAvgRate, baseCurrency)}
+          <div className="mt-2">
+            <HourlyRateWithUsd
+              rate={companyAvgRate}
+              currency={baseCurrency}
+              primaryClassName="text-2xl font-semibold text-sky-300"
+              usdClassName="mt-1 text-sm tabular-nums text-sky-200/75"
+            />
           </div>
         </div>
       </section>
@@ -173,13 +183,24 @@ export default async function CompanyDetailPage({
                     </Link>
                   </td>
                   <td className="py-2 text-right tabular-nums text-emerald-300">
-                    {formatCurrency(r.income, baseCurrency)}
+                    <CurrencyWithUsd
+                      amount={r.income}
+                      currency={baseCurrency}
+                      primaryClassName="tabular-nums text-emerald-300"
+                      usdClassName="mt-0.5 text-[11px] tabular-nums text-emerald-200/80"
+                    />
                   </td>
                   <td className="py-2 text-right tabular-nums text-zinc-300">
                     {r.hours.toFixed(2)}
                   </td>
                   <td className="py-2 text-right tabular-nums text-zinc-300">
-                    {formatHourlyRate(r.rate, baseCurrency)}
+                    <HourlyRateWithUsd
+                      rate={r.rate}
+                      currency={baseCurrency}
+                      align="right"
+                      primaryClassName="tabular-nums text-zinc-300"
+                      usdClassName="mt-0.5 text-[11px] tabular-nums text-zinc-500"
+                    />
                   </td>
                 </tr>
               ))}

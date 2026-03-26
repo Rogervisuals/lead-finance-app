@@ -1,4 +1,4 @@
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as
@@ -17,28 +17,13 @@ function assertEnv() {
   }
 }
 
+/**
+ * Server Components, `getUserOrNull`, and route handlers.
+ * `setAll` must exist for @supabase/ssr; in RSC-only contexts it may not be able
+ * to write cookies (caught) — session refresh is handled in `middleware.ts`.
+ */
 export function createSupabaseServerClient() {
-  // Server Components: MUST NOT set cookies (Next.js restriction).
-  // Cookie writes are handled in `middleware.ts`.
   assertEnv();
-
-  const cookieStore = cookies();
-
-  return createServerClient(supabaseUrl!, supabaseAnonKey!, {
-    cookies: {
-      getAll: () =>
-        cookieStore.getAll().map((c) => ({
-          name: c.name,
-          value: c.value,
-        })),
-    },
-  });
-}
-
-export function createSupabaseServerActionClient() {
-  // Server Actions: allowed to set cookies.
-  assertEnv();
-
   const cookieStore = cookies();
 
   return createServerClient(supabaseUrl!, supabaseAnonKey!, {
@@ -52,11 +37,44 @@ export function createSupabaseServerActionClient() {
         cookiesToSet: Array<{
           name: string;
           value: string;
-          options: Record<string, unknown>;
+          options: CookieOptions;
+        }>,
+      ) => {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          // Server Component: cookie writes are not allowed; middleware refreshes session.
+        }
+      },
+    },
+  });
+}
+
+/**
+ * Server Actions — cookie store is mutable; writes must succeed for auth refresh.
+ */
+export function createSupabaseServerActionClient() {
+  assertEnv();
+  const cookieStore = cookies();
+
+  return createServerClient(supabaseUrl!, supabaseAnonKey!, {
+    cookies: {
+      getAll: () =>
+        cookieStore.getAll().map((c) => ({
+          name: c.name,
+          value: c.value,
+        })),
+      setAll: (
+        cookiesToSet: Array<{
+          name: string;
+          value: string;
+          options: CookieOptions;
         }>,
       ) => {
         cookiesToSet.forEach(({ name, value, options }) => {
-          (cookieStore as any).set({ name, value, ...options });
+          cookieStore.set(name, value, options);
         });
       },
     },
@@ -70,4 +88,3 @@ export async function getUserOrNull() {
   } = await supabase.auth.getUser();
   return user ?? null;
 }
-

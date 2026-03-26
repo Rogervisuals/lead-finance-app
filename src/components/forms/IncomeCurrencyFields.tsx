@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency } from "@/lib/finance/format";
+import {
+  getValidCachedFxRate,
+  setCachedFxRate,
+} from "@/lib/finance/exchange-rate-cache";
 import { fetchFxRate } from "@/lib/finance/exchange-rate";
+import { formatFxLastUpdated } from "@/lib/finance/fx-last-updated-label";
 import { roundMoney } from "@/lib/finance/income-currency";
 
 /** Only EUR and USD are selectable for income amounts */
@@ -44,9 +49,19 @@ export function IncomeCurrencyFields({
 
   const [rateLoading, setRateLoading] = useState(false);
   const [rateError, setRateError] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+
+  /** Re-render periodically so "Last updated X min ago" stays accurate. */
+  const [, setLabelTick] = useState(0);
+  useEffect(() => {
+    if (lastUpdatedAt == null) return;
+    const id = window.setInterval(() => setLabelTick((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, [lastUpdatedAt]);
 
   /** Only refetch FX when the user changes currency (avoids overwriting edit rates / Strict Mode double-fetch) */
   const prevCurrency = useRef(currency);
+  const fetchSeqRef = useRef(0);
 
   const showRate = currency !== base;
 
@@ -67,20 +82,41 @@ export function IncomeCurrencyFields({
       setExchangeRate("");
       setRateError(false);
       setRateLoading(false);
+      setLastUpdatedAt(null);
       return;
     }
 
     let cancelled = false;
-    setRateLoading(true);
-    setRateError(false);
+    const seq = ++fetchSeqRef.current;
 
-    (async () => {
-      const rate = await fetchFxRate(currency, base);
-      if (cancelled) return;
+    const cached = getValidCachedFxRate(currency, base);
+
+    if (cached) {
+      setExchangeRate(String(cached.rate));
+      setRateError(false);
       setRateLoading(false);
+      setLastUpdatedAt(cached.fetchedAt);
+    } else {
+      setRateLoading(true);
+      setRateError(false);
+      setLastUpdatedAt(null);
+    }
+
+    void (async () => {
+      const rate = await fetchFxRate(currency, base);
+      if (cancelled || seq !== fetchSeqRef.current) return;
+
+      setRateLoading(false);
+
       if (rate != null && rate > 0) {
+        setCachedFxRate(currency, base, rate);
         setExchangeRate(String(rate));
-      } else {
+        setLastUpdatedAt(Date.now());
+        setRateError(false);
+        return;
+      }
+
+      if (!cached) {
         setRateError(true);
       }
     })();
@@ -89,6 +125,11 @@ export function IncomeCurrencyFields({
       cancelled = true;
     };
   }, [currency, base]);
+
+  const lastUpdatedLabel =
+    lastUpdatedAt != null && !rateError
+      ? formatFxLastUpdated(lastUpdatedAt)
+      : null;
 
   return (
     <>
@@ -149,6 +190,9 @@ export function IncomeCurrencyFields({
             <span className="text-xs text-zinc-500">
               Filled automatically from current market rates; you can adjust. Totals use{" "}
               {base}.
+              {lastUpdatedLabel ? (
+                <span className="block pt-0.5 text-zinc-600">{lastUpdatedLabel}</span>
+              ) : null}
             </span>
           )}
           {convertedPreview != null ? (

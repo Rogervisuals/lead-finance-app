@@ -3,13 +3,16 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { selectClientByIdForUser } from "@/lib/supabase/schema-compat";
 import {
-  formatCurrency,
-  formatHourlyRate,
   formatISODate,
   formatISODateTime,
   safeRate,
 } from "@/lib/finance/format";
 import { IncomeAmountDisplay } from "@/components/display/IncomeAmountDisplay";
+import {
+  CurrencyWithUsd,
+  HourlyRateWithUsd,
+} from "@/components/display/CurrencyWithUsd";
+import { StatCard } from "@/components/display/StatCard";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 
 export const dynamic = "force-dynamic";
@@ -216,9 +219,17 @@ export default async function ClientSummaryPage({
         />
         <StatCard
           title={vatEnabled ? "Income (all time, incl VAT)" : "Income (all time)"}
-          value={formatCurrency(incomeGross, baseCurrency)}
+          value={
+            <CurrencyWithUsd
+              amount={incomeGross}
+              currency={baseCurrency}
+              primaryClassName="text-xl font-semibold text-emerald-300"
+              usdClassName="mt-1 text-xs tabular-nums text-emerald-200/70"
+            />
+          }
           accent="text-emerald-300"
           border="border-emerald-900/50"
+          valueClassName="mt-2"
         />
         <StatCard
           title="Hours (all time)"
@@ -228,23 +239,41 @@ export default async function ClientSummaryPage({
         />
         <StatCard
           title="Hourly rate"
-          value={formatHourlyRate(overallRate, baseCurrency)}
+          value={
+            <HourlyRateWithUsd
+              rate={overallRate}
+              currency={baseCurrency}
+              primaryClassName="text-xl font-semibold text-zinc-50"
+              usdClassName="mt-1 text-xs tabular-nums text-zinc-400"
+            />
+          }
           accent="text-zinc-50"
           border="border-zinc-800"
+          valueClassName="mt-2"
         />
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
         <div className="rounded-xl border border-amber-900/40 bg-zinc-900/20 p-4">
           <div className="text-sm text-zinc-400">VAT ({settings.vat_percentage}%)</div>
-          <div className="mt-2 text-xl font-semibold text-amber-300">
-            {formatCurrency(vatAmount, baseCurrency)}
+          <div className="mt-2">
+            <CurrencyWithUsd
+              amount={vatAmount}
+              currency={baseCurrency}
+              primaryClassName="text-xl font-semibold text-amber-300"
+              usdClassName="mt-1 text-xs tabular-nums text-amber-200/70"
+            />
           </div>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
           <div className="text-sm text-zinc-400">Net income (ex VAT)</div>
-          <div className="mt-2 text-xl font-semibold text-zinc-50">
-            {formatCurrency(incomeNet, baseCurrency)}
+          <div className="mt-2">
+            <CurrencyWithUsd
+              amount={incomeNet}
+              currency={baseCurrency}
+              primaryClassName="text-xl font-semibold text-zinc-50"
+              usdClassName="mt-1 text-xs tabular-nums text-zinc-400"
+            />
           </div>
         </div>
       </section>
@@ -275,19 +304,27 @@ export default async function ClientSummaryPage({
                     <td className="py-2 text-zinc-200">{p.name}</td>
                     <td className="py-2 text-zinc-400">{p.status ?? "—"}</td>
                     <td className="py-2 text-right text-zinc-200">
-                      {formatCurrency(incomeByProject.get(p.id) ?? 0, baseCurrency)}
+                      <CurrencyWithUsd
+                        amount={incomeByProject.get(p.id) ?? 0}
+                        currency={baseCurrency}
+                        primaryClassName="tabular-nums text-zinc-200"
+                        usdClassName="mt-0.5 text-[11px] tabular-nums text-zinc-500"
+                      />
                     </td>
                     <td className="py-2 text-right text-zinc-200">
                       {(hoursByProject.get(p.id) ?? 0).toFixed(2)}
                     </td>
                     <td className="py-2 text-right text-zinc-200">
-                      {formatHourlyRate(
-                        safeRate(
+                      <HourlyRateWithUsd
+                        rate={safeRate(
                           incomeByProject.get(p.id) ?? 0,
                           hoursByProject.get(p.id) ?? 0
-                        ),
-                        baseCurrency
-                      )}
+                        )}
+                        currency={baseCurrency}
+                        align="right"
+                        primaryClassName="tabular-nums text-zinc-200"
+                        usdClassName="mt-0.5 text-[11px] tabular-nums text-zinc-500"
+                      />
                     </td>
                   </tr>
                 ))}
@@ -407,25 +444,6 @@ export default async function ClientSummaryPage({
           )}
         </div>
       </section>
-    </div>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  accent,
-  border,
-}: {
-  title: string;
-  value: string;
-  accent: string;
-  border: string;
-}) {
-  return (
-    <div className={`rounded-xl border ${border} bg-zinc-900/20 p-4`}>
-      <div className="text-sm text-zinc-400">{title}</div>
-      <div className={`mt-2 text-xl font-semibold ${accent}`}>{value}</div>
     </div>
   );
 }

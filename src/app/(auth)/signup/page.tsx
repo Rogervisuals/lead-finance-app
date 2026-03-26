@@ -12,6 +12,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
@@ -38,24 +39,24 @@ export default function SignupPage() {
       return;
     }
 
-    if (data.user) {
+    if (data.session) {
       router.push("/dashboard");
       router.refresh();
       return;
     }
 
-    setMessage(
-      "Check your email to confirm your account, then sign in."
-    );
+    const confirmationText = "Confirmation mail has been sent to your email";
+    setMessage(confirmationText);
+    setShowSuccessModal(true);
+    setDisplayName("");
+    setEmail("");
+    setPassword("");
     setLoading(false);
   }
 
   return (
     <div className="w-full rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
-      <h1 className="mb-2 text-xl font-semibold">Create account</h1>
-      <p className="mb-5 text-sm text-zinc-400">
-        Your data is stored in Supabase tables with RLS.
-      </p>
+      <h1 className="mb-5 text-xl font-semibold">Create account</h1>
 
       {error ? (
         <div className="mb-4 rounded-md border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200">
@@ -82,6 +83,7 @@ export default function SignupPage() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="How we should address you"
+            disabled={loading || showSuccessModal}
             className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
           />
         </div>
@@ -96,6 +98,7 @@ export default function SignupPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            disabled={loading || showSuccessModal}
             className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
           />
         </div>
@@ -110,13 +113,14 @@ export default function SignupPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            disabled={loading || showSuccessModal}
             className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
           />
         </div>
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || showSuccessModal}
           className="w-full rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60"
         >
           {loading ? "Creating..." : "Create account"}
@@ -129,6 +133,35 @@ export default function SignupPage() {
           Sign in
         </Link>
       </p>
+
+      {showSuccessModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close confirmation modal"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowSuccessModal(false)}
+          />
+          <div className="relative w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-900/95 p-6 shadow-lg transition-all duration-200 ease-out">
+            <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full border border-sky-800/80 bg-sky-950/40 text-sky-300">
+              ✉
+            </div>
+            <h2 className="text-xl font-semibold text-zinc-100">Check your email</h2>
+            <p className="mt-2 text-sm text-zinc-300">
+              We sent you a confirmation link. Please verify your account to continue.
+            </p>
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={() => setShowSuccessModal(false)}
+                className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

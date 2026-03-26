@@ -1,12 +1,16 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getUserOrNull, createSupabaseServerClient } from "@/lib/supabase/server";
+import { THEME_COOKIE_NAME, type ThemeMode } from "@/lib/theme";
 import { getNavbarDisplayLabel } from "@/lib/auth-display-name";
 import { isAdminUser } from "@/lib/admin";
+import { AiCreateClientAssistant } from "@/components/ai/AiCreateClientAssistant";
 import { WelcomeUserMenu } from "@/components/auth/WelcomeUserMenu";
 import { FeedbackFloatingButton } from "@/components/feedback/FeedbackFloatingButton";
 import { MobileNav } from "@/components/nav/MobileNav";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { ActiveTimerNavWithSuspense } from "@/components/timer/ActiveTimerNavWithSuspense";
 import { getActiveTimerForUser } from "@/lib/active-timer";
 
@@ -15,6 +19,9 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await getUserOrNull();
   if (!user) redirect("/login");
+
+  const cookieTheme = cookies().get(THEME_COOKIE_NAME)?.value;
+  const serverTheme: ThemeMode = cookieTheme === "dark" ? "dark" : "light";
 
   const displayName = getNavbarDisplayLabel(user);
   const admin = isAdminUser(user.email);
@@ -64,6 +71,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeToggle serverTheme={serverTheme} />
             <ActiveTimerNavWithSuspense
               initialTimer={initialTimer}
               clients={
@@ -88,6 +96,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="relative z-0 mx-auto min-w-0 max-w-6xl px-4 py-6">{children}</main>
+      <AiCreateClientAssistant />
       <FeedbackFloatingButton />
     </div>
   );

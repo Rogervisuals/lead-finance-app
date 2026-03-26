@@ -5,7 +5,7 @@ import {
   createSupabaseServerActionClient,
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
-import { convertToBase } from "@/lib/finance/income-currency";
+import { parseCurrencyAmountFromForm } from "@/lib/finance/income-currency";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 
 function toNullableString(v: FormDataEntryValue | null) {
@@ -49,53 +49,6 @@ async function normalizeProjectForClient({
   return project_id;
 }
 
-function parseIncomeFromForm(
-  formData: FormData,
-  baseCurrency: string
-): {
-  amount_original: number;
-  currency: string;
-  exchange_rate: number;
-  amount_converted: number;
-} | null {
-  const amountOriginal = toNullableNumber(formData.get("amount_original")) ?? 0;
-  const currency =
-    String(formData.get("currency") ?? "EUR").trim().toUpperCase() || "EUR";
-  const base = baseCurrency.trim().toUpperCase() || "EUR";
-  const rateRaw = toNullableNumber(formData.get("exchange_rate"));
-
-  if (currency !== base) {
-    if (rateRaw == null || !Number.isFinite(rateRaw) || rateRaw <= 0) {
-      return null;
-    }
-    const { exchange_rate, amount_converted } = convertToBase(
-      amountOriginal,
-      currency,
-      base,
-      rateRaw
-    );
-    return {
-      amount_original: amountOriginal,
-      currency,
-      exchange_rate,
-      amount_converted,
-    };
-  }
-
-  const { exchange_rate, amount_converted } = convertToBase(
-    amountOriginal,
-    currency,
-    base,
-    1
-  );
-  return {
-    amount_original: amountOriginal,
-    currency,
-    exchange_rate,
-    amount_converted,
-  };
-}
-
 export async function createIncomeAction(formData: FormData) {
   const supabase = createSupabaseServerActionClient();
   const {
@@ -104,7 +57,7 @@ export async function createIncomeAction(formData: FormData) {
   if (!user) redirect("/login");
 
   const settings = await getOrCreateUserFinancialSettings(user.id);
-  const parsed = parseIncomeFromForm(formData, settings.base_currency);
+  const parsed = parseCurrencyAmountFromForm(formData, settings.base_currency);
   if (!parsed) redirect("/income?error=exchange_rate");
 
   const client_id = String(formData.get("client_id") ?? "").trim();
@@ -142,7 +95,7 @@ export async function updateIncomeAction(formData: FormData) {
   if (!user) redirect("/login");
 
   const settings = await getOrCreateUserFinancialSettings(user.id);
-  const parsed = parseIncomeFromForm(formData, settings.base_currency);
+  const parsed = parseCurrencyAmountFromForm(formData, settings.base_currency);
   if (!parsed) redirect("/income?error=exchange_rate");
 
   const id = String(formData.get("id") ?? "").trim();

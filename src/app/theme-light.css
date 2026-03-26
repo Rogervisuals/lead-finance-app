@@ -1,0 +1,476 @@
+/**
+ * Light theme: additive overrides only.
+ * Dark UI is unchanged — these rules apply only when <html class="light">.
+ */
+
+html.light {
+  --bg: #ffffff;
+  --text: #0f172a;
+  --muted-text: #64748b;
+  --card: #f8fafc;
+  --border: #e2e8f0;
+  /* Strong accents for light mode (numbers & highlights) */
+  --accent-green: #16a34a;
+  --accent-green-dim: #15803d;
+  --accent-red: #dc2626;
+  --accent-red-dim: #b91c1c;
+  --accent-blue: #2563eb;
+  --accent-blue-dim: #1d4ed8;
+  --accent-amber: #d97706;
+  --accent-amber-dim: #b45309;
+  --accent-cyan: #0891b2;
+  --accent-cyan-dim: #0e7490;
+  color-scheme: light;
+}
+
+/* Legacy body gradient vars from globals.css — only overridden in light */
+html.light {
+  --foreground-rgb: 15, 23, 42;
+  --background-start-rgb: 255, 255, 255;
+  --background-end-rgb: 255, 255, 255;
+}
+
+html.light body {
+  background: var(--bg) !important;
+  color: var(--text);
+}
+
+/* Headings: slate-900, semibold+ */
+html.light h1,
+html.light h2,
+html.light h3 {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---------- Surfaces: cards & panels ---------- */
+
+html.light .bg-zinc-950 {
+  background-color: var(--card) !important;
+}
+html.light .bg-zinc-950\/50 {
+  background-color: #f1f5f9 !important;
+}
+html.light .bg-zinc-950\/20 {
+  background-color: #f8fafc !important;
+}
+html.light .bg-zinc-950\/30 {
+  background-color: #f1f5f9 !important;
+}
+html.light .bg-zinc-950\/40 {
+  background-color: #eef2f7 !important;
+}
+html.light .bg-zinc-950\/60 {
+  background-color: #e2e8f0 !important;
+}
+html.light .bg-zinc-950\/70 {
+  background-color: #cbd5e1 !important;
+}
+
+html.light .bg-zinc-900 {
+  background-color: #e2e8f0 !important;
+}
+html.light .bg-zinc-900\/20 {
+  background-color: rgba(241, 245, 249, 0.95) !important;
+}
+html.light .bg-zinc-900\/30 {
+  background-color: rgba(226, 232, 240, 0.92) !important;
+}
+html.light .bg-zinc-900\/40 {
+  background-color: rgba(226, 232, 240, 0.96) !important;
+}
+html.light .bg-zinc-900\/50 {
+  background-color: rgba(203, 213, 225, 0.9) !important;
+}
+html.light .bg-zinc-900\/90 {
+  background-color: rgba(248, 250, 252, 0.99) !important;
+}
+html.light .bg-zinc-900\/95 {
+  background-color: rgba(248, 250, 252, 1) !important;
+}
+
+html.light .bg-zinc-800 {
+  background-color: #cbd5e1 !important;
+}
+html.light .bg-zinc-800\/80 {
+  background-color: rgba(203, 213, 225, 0.9) !important;
+}
+
+html.light .bg-zinc-950\/80 {
+  background-color: rgba(248, 250, 252, 0.98) !important;
+}
+
+html.light .bg-zinc-950\/25 {
+  background-color: rgba(248, 250, 252, 0.97) !important;
+}
+
+/* Modal / overlay scrim */
+html.light .bg-zinc-950\/60 {
+  background-color: rgba(15, 23, 42, 0.42) !important;
+}
+
+html.light .border-zinc-800 {
+  border-color: var(--border) !important;
+}
+html.light .border-zinc-800\/70 {
+  border-color: #cbd5e1 !important;
+}
+html.light .border-zinc-800\/80 {
+  border-color: #cbd5e1 !important;
+}
+html.light .border-zinc-800\/90 {
+  border-color: #cbd5e1 !important;
+}
+html.light .border-zinc-700 {
+  border-color: #cbd5e1 !important;
+}
+
+/* Optional depth on bordered cards (rounded-xl sections) */
+html.light .rounded-xl.border.border-zinc-800 {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* ---------- Body & secondary text (no weak gray) ---------- */
+
+html.light .text-zinc-50 {
+  color: var(--text) !important;
+}
+html.light .text-zinc-100 {
+  color: var(--text) !important;
+}
+html.light .text-zinc-200 {
+  color: #334155 !important;
+}
+html.light .text-zinc-300 {
+  color: #475569 !important;
+}
+html.light .text-zinc-400 {
+  color: var(--muted-text) !important;
+}
+html.light .text-zinc-500 {
+  color: var(--muted-text) !important;
+}
+html.light .text-zinc-600 {
+  color: #475569 !important;
+}
+
+html.light .placeholder\:text-zinc-600::placeholder {
+  color: var(--muted-text) !important;
+}
+
+html.light .hover\:bg-zinc-900:hover {
+  background-color: #e2e8f0 !important;
+}
+html.light .hover\:bg-zinc-950\/40:hover {
+  background-color: #e2e8f0 !important;
+}
+html.light .hover\:bg-zinc-950\/50:hover {
+  background-color: #cbd5e1 !important;
+}
+html.light .hover\:bg-zinc-950\/60:hover {
+  background-color: #cbd5e1 !important;
+}
+html.light .hover\:bg-zinc-800:hover {
+  background-color: #cbd5e1 !important;
+}
+html.light .hover\:border-sky-700:hover {
+  border-color: var(--accent-blue-dim) !important;
+}
+
+html.light .hover\:text-white:hover {
+  color: var(--text) !important;
+}
+
+/* Inputs */
+html.light .\[color-scheme\:dark\] {
+  color-scheme: light !important;
+}
+
+html.light input[type="date"],
+html.light input[type="datetime-local"] {
+  color-scheme: light;
+}
+
+html.light .shadow-black\/50 {
+  --tw-shadow-color: rgba(15, 23, 42, 0.08);
+}
+
+/* ---------- Financial & accent colors (high contrast, no washed opacity) ---------- */
+
+/* Green / income */
+html.light .text-emerald-300 {
+  color: var(--accent-green) !important;
+}
+html.light .text-emerald-200 {
+  color: var(--accent-green-dim) !important;
+}
+html.light .text-emerald-200\/70,
+html.light .text-emerald-200\/75,
+html.light .text-emerald-200\/80,
+html.light .text-emerald-200\/90 {
+  color: var(--accent-green-dim) !important;
+}
+html.light .text-emerald-300\/90 {
+  color: var(--accent-green) !important;
+}
+
+/* Red / expenses */
+html.light .text-rose-300 {
+  color: var(--accent-red) !important;
+}
+html.light .text-rose-200 {
+  color: var(--accent-red-dim) !important;
+}
+html.light .text-rose-200\/90 {
+  color: var(--accent-red-dim) !important;
+}
+
+/* Amber / VAT & warnings */
+html.light .text-amber-300 {
+  color: var(--accent-amber) !important;
+}
+html.light .text-amber-200 {
+  color: var(--accent-amber-dim) !important;
+}
+html.light .text-amber-200\/70 {
+  color: var(--accent-amber-dim) !important;
+}
+
+/* Blue / links & sky accents */
+html.light .text-sky-300 {
+  color: var(--accent-blue) !important;
+}
+html.light .text-sky-200 {
+  color: var(--accent-blue-dim) !important;
+}
+html.light .text-sky-200\/75 {
+  color: var(--accent-blue-dim) !important;
+}
+
+/* Cyan */
+html.light .text-cyan-300 {
+  color: var(--accent-cyan) !important;
+}
+html.light .text-cyan-200 {
+  color: var(--accent-cyan-dim) !important;
+}
+
+/* ---------- Status panels ---------- */
+
+html.light .bg-amber-950\/20 {
+  background-color: #fffbeb !important;
+}
+html.light .border-amber-900\/50 {
+  border-color: #fcd34d !important;
+}
+html.light .border-amber-900\/40 {
+  border-color: #fcd34d !important;
+}
+html.light .bg-emerald-950\/20 {
+  background-color: #ecfdf5 !important;
+}
+html.light .border-emerald-900\/50 {
+  border-color: #6ee7b7 !important;
+}
+html.light .border-emerald-900\/40 {
+  border-color: #6ee7b7 !important;
+}
+html.light .bg-emerald-950\/90 {
+  background-color: #ecfdf5 !important;
+}
+html.light .border-emerald-800\/70 {
+  border-color: #34d399 !important;
+}
+html.light .bg-emerald-950\/30 {
+  background-color: #d1fae5 !important;
+}
+html.light .bg-emerald-950\/50 {
+  background-color: #a7f3d0 !important;
+}
+
+html.light .bg-sky-950\/40 {
+  background-color: #eff6ff !important;
+}
+html.light .border-sky-800 {
+  border-color: #93c5fd !important;
+}
+html.light .border-sky-800\/80 {
+  border-color: #bfdbfe !important;
+}
+
+html.light .bg-rose-950\/20 {
+  background-color: #fff1f2 !important;
+}
+html.light .bg-rose-950\/30 {
+  background-color: #ffe4e6 !important;
+}
+html.light .bg-rose-950\/50 {
+  background-color: #fecdd3 !important;
+}
+html.light .border-rose-900\/40 {
+  border-color: #fda4af !important;
+}
+html.light .border-rose-900\/50 {
+  border-color: #fb7185 !important;
+}
+
+html.light .border-sky-900\/40 {
+  border-color: #93c5fd !important;
+}
+html.light .border-cyan-900\/40 {
+  border-color: #67e8f9 !important;
+}
+
+/* ---------- Dashboard: main financial cards (readability) ---------- */
+
+/* Secondary USD line (≈ $…) — solid slate-500, no opacity utilities */
+html.light [data-usd-subline] {
+  color: #64748b !important;
+}
+
+/* Card titles: "Expenses (month)", "Safe to spend", etc. */
+html.light [data-fin-card] > div:first-child {
+  color: #334155 !important;
+  font-weight: 500;
+}
+
+/* Expenses — strong red */
+html.light [data-fin-card="expenses"] .text-rose-300 {
+  color: #dc2626 !important;
+}
+
+/* Safe to spend — stronger sky blue */
+html.light [data-fin-card="safe-to-spend"] .text-cyan-300 {
+  color: #0284c7 !important;
+}
+
+/* Card borders (Expenses + Safe to spend) */
+html.light [data-fin-card="expenses"].border {
+  border-color: #fecaca !important;
+  border-width: 1px;
+  border-style: solid;
+}
+
+html.light [data-fin-card="safe-to-spend"].border {
+  border-color: #bae6fd !important;
+  border-width: 1px;
+  border-style: solid;
+}
+
+/* ---------- Dashboard: Insights cards (match main financial block) ---------- */
+
+html.light [data-insight-card] {
+  background-color: #f1f5f9 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+html.light [data-insight-card]:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.07);
+}
+
+/* Uppercase labels: muted but readable (same family as fin card titles) */
+html.light [data-insight-card] [data-insight-label] {
+  color: #64748b !important;
+  font-weight: 500;
+}
+
+/* Divider between label and body */
+html.light [data-insight-card] .border-zinc-800\/80 {
+  border-color: var(--border) !important;
+}
+
+/* Accent borders — same tints as financial cards (emerald / rose / sky) */
+html.light [data-insight-card][data-insight-accent="emerald"] {
+  border-color: #6ee7b7 !important;
+}
+
+html.light [data-insight-card][data-insight-accent="rose"] {
+  border-color: #fda4af !important;
+}
+
+html.light [data-insight-card][data-insight-accent="sky"] {
+  border-color: #93c5fd !important;
+}
+
+html.light [data-insight-card][data-insight-accent="emerald"]:hover {
+  border-color: #34d399 !important;
+}
+
+html.light [data-insight-card][data-insight-accent="rose"]:hover {
+  border-color: #fb7185 !important;
+}
+
+html.light [data-insight-card][data-insight-accent="sky"]:hover {
+  border-color: #60a5fa !important;
+}
+
+/* ---------- Timer modal (portal overlay) ---------- */
+
+html.light [data-timer-backdrop] {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  /* No backdrop-filter: native <select> dropdowns repaint slowly over blurred layers on some GPUs */
+  backdrop-filter: none;
+}
+
+html.light [data-timer-dialog] {
+  background-color: #ffffff !important;
+  border-color: var(--border) !important;
+  color: var(--text);
+  box-shadow:
+    0 4px 14px rgba(15, 23, 42, 0.08),
+    0 20px 42px rgba(15, 23, 42, 0.12) !important;
+}
+
+html.light [data-timer-close] {
+  border-color: var(--border) !important;
+  background-color: #f8fafc !important;
+  color: var(--text) !important;
+}
+
+html.light [data-timer-close]:hover {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light [data-timer-dialog] select[data-timer-field],
+html.light [data-timer-dialog] textarea[data-timer-field] {
+  background-color: #ffffff !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+html.light [data-timer-dialog] select[data-timer-field]:focus,
+html.light [data-timer-dialog] textarea[data-timer-field]:focus {
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22) !important;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+}
+
+html.light [data-timer-dialog] select[data-timer-field] option {
+  background-color: #ffffff !important;
+  color: var(--text) !important;
+}
+
+html.light [data-timer-dialog] textarea[data-timer-field]::placeholder {
+  color: #64748b !important;
+}
+
+html.light [data-timer-error] {
+  border-color: #fecaca !important;
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+}
+
+html.light [data-timer-dialog] .bg-sky-600 {
+  background-color: var(--accent-blue) !important;
+}
+
+html.light [data-timer-dialog] .hover\:bg-sky-500:hover {
+  background-color: var(--accent-blue-dim) !important;
+}
+
+html.light [data-timer-dialog] .active\:bg-sky-700:active {
+  background-color: #1e40af !important;
+}

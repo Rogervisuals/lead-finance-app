@@ -1,0 +1,489 @@
+import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
+
+type AiCreateClientResponse = {
+  action: "create_client";
+  name: string;
+  email: string | null;
+  company: string | null;
+  notes: string | null;
+};
+
+type AiUpdateClientResponse = {
+  action: "update_client";
+  search_name: string;
+  new_name: string | null;
+  email: string | null;
+  company: string | null;
+  notes: string | null;
+};
+
+type AiAddIncomeResponse = {
+  action: "add_income";
+  client_name: string;
+  project_name: string | null;
+  amount: number;
+  currency: string;
+  date: string;
+  description: string | null;
+};
+
+type AiDeleteIncomeResponse = {
+  action: "delete_income";
+  client_name: string;
+  project_name: string | null;
+  date: string;
+  amount: number | null;
+};
+
+type AiDeleteClientResponse = {
+  action: "delete_client";
+  client_name: string;
+  force: boolean;
+};
+
+type AiCreateCompanyResponse = {
+  action: "create_company";
+  company_name: string;
+};
+
+type AiCreateClientsResponse = {
+  action: "create_clients";
+  clients: Array<{
+    name: string;
+    email: string | null;
+    notes: string | null;
+  }>;
+  company_name: string | null;
+};
+
+type AiCreateProjectResponse = {
+  action: "create_project";
+  client_name: string;
+  project_name: string;
+  status: string;
+  start_date: string;
+  end_date: string | null;
+};
+
+type AiUpdateProjectStatusResponse = {
+  action: "update_project_status";
+  client_name: string;
+  project_name: string;
+  status: string;
+  end_date: string;
+};
+
+type AiDeleteProjectResponse = {
+  action: "delete_project";
+  client_name: string;
+  project_name: string;
+};
+
+type AiActionResponse =
+  | AiCreateClientResponse
+  | AiUpdateClientResponse
+  | AiAddIncomeResponse
+  | AiDeleteIncomeResponse
+  | AiDeleteClientResponse
+  | AiCreateCompanyResponse
+  | AiCreateClientsResponse
+  | AiCreateProjectResponse
+  | AiUpdateProjectStatusResponse
+  | AiDeleteProjectResponse;
+
+const MAX_REQUESTS_PER_DAY = 20;
+const MAX_WORDS = 40;
+const COOLDOWN_SECONDS = 3;
+
+type UsageRow = {
+  user_id: string;
+  date: string;
+  requests_count: number;
+  last_request_at: string | null;
+};
+
+function badRequest(message: string) {
+  return NextResponse.json({ error: message }, { status: 400 });
+}
+
+function trimOrNull(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeIncomeDate(input: string | null): string {
+  const today = new Date();
+  const toISO = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  if (!input) return toISO(today);
+  const s = input.trim().toLowerCase();
+  if (!s || s === "today") return toISO(today);
+  if (s === "yesterday") {
+    const y = new Date(today);
+    y.setDate(y.getDate() - 1);
+    return toISO(y);
+  }
+  // Keep explicit YYYY-MM-DD style dates as-is if valid.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return toISO(today);
+}
+
+function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | null {
+  if (parsed.action === "create_client") {
+    const name = trimOrNull(parsed.name);
+    if (!name) return null;
+    return {
+      action: "create_client",
+      name,
+      email: trimOrNull(parsed.email),
+      company: trimOrNull(parsed.company),
+      notes: trimOrNull(parsed.notes),
+    };
+  }
+  if (parsed.action === "update_client") {
+    const searchName = trimOrNull(parsed.search_name);
+    if (!searchName) return null;
+    return {
+      action: "update_client",
+      search_name: searchName,
+      new_name: trimOrNull(parsed.new_name),
+      email: trimOrNull(parsed.email),
+      company: trimOrNull(parsed.company),
+      notes: trimOrNull(parsed.notes),
+    };
+  }
+  if (parsed.action === "add_income") {
+    const clientName = trimOrNull(parsed.client_name);
+    const amount =
+      typeof parsed.amount === "number"
+        ? parsed.amount
+        : Number(parsed.amount ?? NaN);
+    if (!clientName) return null;
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const currencyRaw = trimOrNull(parsed.currency);
+    const currency = (currencyRaw ?? "EUR").toUpperCase();
+    const projectName = trimOrNull(parsed.project_name);
+    const description = trimOrNull(parsed.description);
+    const date = normalizeIncomeDate(trimOrNull(parsed.date));
+    return {
+      action: "add_income",
+      client_name: clientName,
+      project_name: projectName,
+      amount,
+      currency,
+      date,
+      description,
+    };
+  }
+  if (parsed.action === "delete_income") {
+    const clientName = trimOrNull(parsed.client_name);
+    if (!clientName) return null;
+    const projectName = trimOrNull(parsed.project_name);
+    const amount =
+      parsed.amount == null
+        ? null
+        : typeof parsed.amount === "number"
+          ? parsed.amount
+          : Number(parsed.amount ?? NaN);
+    if (amount != null && (!Number.isFinite(amount) || amount <= 0)) return null;
+    const date = normalizeIncomeDate(trimOrNull(parsed.date));
+    return {
+      action: "delete_income",
+      client_name: clientName,
+      project_name: projectName,
+      date,
+      amount,
+    };
+  }
+  if (parsed.action === "delete_client") {
+    const clientName = trimOrNull(parsed.client_name);
+    if (!clientName) return null;
+    const force = Boolean(parsed.force);
+    return {
+      action: "delete_client",
+      client_name: clientName,
+      force,
+    };
+  }
+  if (parsed.action === "create_company") {
+    const companyName = trimOrNull(parsed.company_name);
+    if (!companyName) return null;
+    return {
+      action: "create_company",
+      company_name: companyName,
+    };
+  }
+  if (parsed.action === "create_clients") {
+    const rawClients = Array.isArray(parsed.clients) ? parsed.clients : [];
+    const clients = rawClients
+      .map((c) => c as Record<string, unknown>)
+      .map((c) => ({
+        name: trimOrNull(c.name),
+        email: trimOrNull(c.email),
+        notes: trimOrNull(c.notes),
+      }))
+      .filter((c) => Boolean(c.name)) as Array<{
+      name: string;
+      email: string | null;
+      notes: string | null;
+    }>;
+    if (!clients.length) return null;
+    return {
+      action: "create_clients",
+      clients,
+      company_name: trimOrNull(parsed.company_name),
+    };
+  }
+  if (parsed.action === "create_project") {
+    const clientName = trimOrNull(parsed.client_name);
+    const projectName = trimOrNull(parsed.project_name);
+    if (!clientName || !projectName) return null;
+    const status = (trimOrNull(parsed.status) ?? "active").toLowerCase();
+    const startDate = normalizeIncomeDate(trimOrNull(parsed.start_date));
+    const endDate = trimOrNull(parsed.end_date)
+      ? normalizeIncomeDate(trimOrNull(parsed.end_date))
+      : null;
+    return {
+      action: "create_project",
+      client_name: clientName,
+      project_name: projectName,
+      status,
+      start_date: startDate,
+      end_date: endDate,
+    };
+  }
+  if (parsed.action === "update_project_status") {
+    const clientName = trimOrNull(parsed.client_name);
+    const projectName = trimOrNull(parsed.project_name);
+    if (!clientName || !projectName) return null;
+    const status = (trimOrNull(parsed.status) ?? "finished").toLowerCase();
+    const endDate = normalizeIncomeDate(trimOrNull(parsed.end_date));
+    return {
+      action: "update_project_status",
+      client_name: clientName,
+      project_name: projectName,
+      status,
+      end_date: endDate,
+    };
+  }
+  if (parsed.action === "delete_project") {
+    const clientName = trimOrNull(parsed.client_name);
+    const projectName = trimOrNull(parsed.project_name);
+    if (!clientName || !projectName) return null;
+    return {
+      action: "delete_project",
+      client_name: clientName,
+      project_name: projectName,
+    };
+  }
+  return null;
+}
+
+function parseAssistantJson(raw: string): AiActionResponse[] | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    // Backward compatible: single action object.
+    if ("action" in parsed) {
+      const one = parseSingleAction(parsed);
+      return one ? [one] : null;
+    }
+    // New format: { actions: [...] }
+    const rawActions = Array.isArray(parsed.actions) ? parsed.actions : null;
+    if (!rawActions?.length) return null;
+    const parsedActions = rawActions
+      .map((a) => (a && typeof a === "object" ? parseSingleAction(a as Record<string, unknown>) : null))
+      .filter(Boolean) as AiActionResponse[];
+    if (!parsedActions.length) return null;
+    return parsedActions;
+  } catch {
+    return null;
+  }
+}
+
+function wordCount(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
+function todayIsoDate() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function unauthorized() {
+  return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+}
+
+export async function GET() {
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return unauthorized();
+
+  const usageDate = todayIsoDate();
+  const { data: row } = await supabase
+    .from("user_ai_usage")
+    .select("requests_count")
+    .eq("user_id", user.id)
+    .eq("date", usageDate)
+    .maybeSingle();
+
+  const usedToday = Number((row as { requests_count?: unknown } | null)?.requests_count ?? 0);
+  return NextResponse.json({
+    usedToday,
+    maxPerDay: MAX_REQUESTS_PER_DAY,
+    remaining: Math.max(0, MAX_REQUESTS_PER_DAY - usedToday),
+  });
+}
+
+export async function POST(req: Request) {
+  const openAiKey = process.env.OPENAI_API_KEY;
+  if (!openAiKey) {
+    return NextResponse.json(
+      { error: "Missing OPENAI_API_KEY on server." },
+      { status: 500 },
+    );
+  }
+
+  const body = (await req.json().catch(() => null)) as { message?: unknown } | null;
+  const message = typeof body?.message === "string" ? body.message.trim() : "";
+  if (!message) return badRequest("Message is required.");
+  if (wordCount(message) > MAX_WORDS) {
+    return badRequest(`Message too long (max ${MAX_WORDS} words)`);
+  }
+
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return unauthorized();
+
+  const usageDate = todayIsoDate();
+  const { data: usageRow, error: usageError } = await supabase
+    .from("user_ai_usage")
+    .select("user_id,date,requests_count,last_request_at")
+    .eq("user_id", user.id)
+    .eq("date", usageDate)
+    .maybeSingle();
+
+  if (usageError) {
+    return NextResponse.json(
+      { error: "Could not read usage limits." },
+      { status: 500 },
+    );
+  }
+
+  const usage = usageRow as UsageRow | null;
+  const usedToday = Number(usage?.requests_count ?? 0);
+  if (usedToday >= MAX_REQUESTS_PER_DAY) {
+    return NextResponse.json(
+      {
+        error: `Daily AI limit reached (${MAX_REQUESTS_PER_DAY}/${MAX_REQUESTS_PER_DAY}). Try again tomorrow.`,
+        usedToday,
+        maxPerDay: MAX_REQUESTS_PER_DAY,
+      },
+      { status: 429 },
+    );
+  }
+
+  if (usage?.last_request_at) {
+    const lastMs = new Date(usage.last_request_at).getTime();
+    const nowMs = Date.now();
+    const elapsedSec = (nowMs - lastMs) / 1000;
+    if (Number.isFinite(lastMs) && elapsedSec < COOLDOWN_SECONDS) {
+      const waitFor = Math.max(1, Math.ceil(COOLDOWN_SECONDS - elapsedSec));
+      return NextResponse.json(
+        { error: `Please wait ${waitFor}s before sending another request.` },
+        { status: 429 },
+      );
+    }
+  }
+
+  const nextCount = usedToday + 1;
+  const { error: upsertErr } = await supabase.from("user_ai_usage").upsert(
+    {
+      user_id: user.id,
+      date: usageDate,
+      requests_count: nextCount,
+      last_request_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,date" },
+  );
+  if (upsertErr) {
+    return NextResponse.json(
+      { error: "Could not update usage limits." },
+      { status: 500 },
+    );
+  }
+
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+
+  const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openAiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            'You convert user input into JSON actions.\n\nAvailable actions:\n- create_client\n- create_clients\n- update_client\n- add_income\n- delete_income\n- delete_client\n- create_company\n- create_project\n- update_project_status\n- delete_project\n\n---\n\nReturn ONLY JSON in this format:\n{\n  "actions": [\n    { "action": "..." }\n  ]\n}\n\nEach item in actions[] must match one of these shapes:\n\nCREATE:\n{\n  "action": "create_client",\n  "name": "Client Name",\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE MULTIPLE CLIENTS WITH COMPANY:\n{\n  "action": "create_clients",\n  "clients": [\n    {\n      "name": "required",\n      "email": null,\n      "notes": null\n    }\n  ],\n  "company_name": "optional"\n}\n\nUPDATE:\n{\n  "action": "update_client",\n  "search_name": "existing client name",\n  "new_name": null,\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE PROJECT:\n{\n  "action": "create_project",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "active",\n  "start_date": "today",\n  "end_date": null\n}\n\nUPDATE PROJECT STATUS:\n{\n  "action": "update_project_status",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "finished",\n  "end_date": "today"\n}\n\nDELETE PROJECT:\n{\n  "action": "delete_project",\n  "client_name": "required",\n  "project_name": "required"\n}\n\nADD INCOME:\n{\n  "action": "add_income",\n  "client_name": "required",\n  "project_name": null,\n  "amount": number,\n  "currency": "EUR",\n  "date": "YYYY-MM-DD",\n  "description": null\n}\n\nDELETE INCOME:\n{\n  "action": "delete_income",\n  "client_name": "required",\n  "project_name": null,\n  "date": "YYYY-MM-DD",\n  "amount": null\n}\n\nDELETE CLIENT:\n{\n  "action": "delete_client",\n  "client_name": "required",\n  "force": false\n}\n\nCREATE COMPANY:\n{\n  "action": "create_company",\n  "company_name": "required"\n}\n\nRules:\n- Prefer MULTIPLE actions in actions[] when the user asks for more than one operation.\n- client_name is REQUIRED\n- For add_income: amount is REQUIRED\n- For delete_income: amount optional\n- project_name optional\n- description optional\n- currency default = EUR if not provided\n- date:\n  - if user says "today" -> use "today"\n  - if user says "yesterday" -> use "yesterday"\n  - if no date -> use "today"\n- For delete_client:\n  - set force=true only when user clearly says force delete / delete all data\n- If user says delete project / remove project / delete [project name] / delete [project] from [client], ALWAYS use delete_project (not delete_income)\n- If the input references a known project name, prioritize project actions over income actions',
+        },
+        { role: "user", content: message },
+      ],
+    }),
+  });
+
+  if (!openAiRes.ok) {
+    const errTxt = await openAiRes.text().catch(() => "");
+    return NextResponse.json(
+      { error: "OpenAI request failed.", details: errTxt || undefined },
+      { status: 502 },
+    );
+  }
+
+  const payload = (await openAiRes.json().catch(() => null)) as
+    | {
+        choices?: Array<{
+          message?: { content?: string | null };
+        }>;
+      }
+    | null;
+
+  const content = payload?.choices?.[0]?.message?.content?.trim() ?? "";
+  const parsedActions = parseAssistantJson(content);
+  if (!parsedActions?.length) {
+    return NextResponse.json(
+      { error: "AI response invalid." },
+      { status: 422 },
+    );
+  }
+
+  return NextResponse.json({
+    actions: parsedActions,
+    usage: {
+      usedToday: nextCount,
+      maxPerDay: MAX_REQUESTS_PER_DAY,
+      remaining: Math.max(0, MAX_REQUESTS_PER_DAY - nextCount),
+    },
+  });
+}
+

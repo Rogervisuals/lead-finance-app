@@ -1,4 +1,5 @@
 import { formatCurrency } from "@/lib/finance/format";
+import { UsdSubline } from "@/components/display/CurrencyWithUsd";
 
 type Row = {
   amount_original?: number | string | null;
@@ -6,14 +7,16 @@ type Row = {
   currency?: string | null;
 };
 
-export function IncomeAmountDisplay({
+export async function IncomeAmountDisplay({
   row,
   baseCurrency,
   showConvertedHint = true,
+  accentClassName = "text-emerald-300",
 }: {
   row: Row;
   baseCurrency: string;
   showConvertedHint?: boolean;
+  accentClassName?: string;
 }) {
   const orig = Number(row.amount_original ?? 0);
   const cur = String(row.currency ?? "EUR").trim().toUpperCase() || "EUR";
@@ -24,13 +27,23 @@ export function IncomeAmountDisplay({
 
   return (
     <div className="text-right">
-      <span className="text-emerald-300">
-        {formatCurrency(orig, cur)}
-      </span>
+      <span className={accentClassName}>{formatCurrency(orig, cur)}</span>
+      {cur !== "USD" ? (
+        <UsdSubline amount={orig} currency={cur} className="text-xs text-zinc-500" />
+      ) : null}
       {showConvertedHint && !same ? (
-        <div className="text-xs text-zinc-500">
-          ≈ {formatCurrency(conv, base)}
-        </div>
+        <>
+          <div className="text-xs text-zinc-500">
+            ≈ {formatCurrency(conv, base)}
+          </div>
+          {base !== "USD" && cur !== "USD" ? (
+            <UsdSubline
+              amount={conv}
+              currency={base}
+              className="text-xs text-zinc-500"
+            />
+          ) : null}
+        </>
       ) : null}
     </div>
   );

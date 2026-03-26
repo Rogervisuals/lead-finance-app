@@ -2,13 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerActionClient } from "@/lib/supabase/server";
-
-function toNullableNumber(v: FormDataEntryValue | null) {
-  const s = String(v ?? "").trim();
-  if (!s) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
+import { parseCurrencyAmountFromForm } from "@/lib/finance/income-currency";
+import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 
 function toNullableString(v: FormDataEntryValue | null) {
   const s = String(v ?? "").trim();
@@ -26,16 +21,22 @@ export async function createBusinessExpenseAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const amount = toNullableNumber(formData.get("amount"));
+  const settings = await getOrCreateUserFinancialSettings(user.id);
+  const parsed = parseCurrencyAmountFromForm(formData, settings.base_currency);
+  if (!parsed) redirect("/business/general-expenses?error=exchange_rate");
+
   const date = String(formData.get("date") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
   const notes = toNullableString(formData.get("notes"));
 
-  if (amount == null || !date || !category) redirect("/business/general-expenses?error=Missing+fields");
+  if (!date || !category) redirect("/business/general-expenses?error=Missing+fields");
 
   await supabase.from("business_expenses").insert({
     user_id: user.id,
-    amount,
+    amount: parsed.amount_converted,
+    amount_original: parsed.amount_original,
+    currency: parsed.currency,
+    exchange_rate: parsed.exchange_rate,
     date,
     category,
     notes,
@@ -52,17 +53,23 @@ export async function updateBusinessExpenseAction(formData: FormData) {
   if (!user) redirect("/login");
 
   const id = String(formData.get("id") ?? "").trim();
-  const amount = toNullableNumber(formData.get("amount"));
+  const settings = await getOrCreateUserFinancialSettings(user.id);
+  const parsed = parseCurrencyAmountFromForm(formData, settings.base_currency);
+  if (!parsed) redirect(`/business/general-expenses/${id}/edit?error=exchange_rate`);
+
   const date = String(formData.get("date") ?? "").trim();
   const category = String(formData.get("category") ?? "").trim();
   const notes = toNullableString(formData.get("notes"));
 
-  if (!id || amount == null || !date || !category) redirect("/business/general-expenses");
+  if (!id || !date || !category) redirect("/business/general-expenses");
 
   await supabase
     .from("business_expenses")
     .update({
-      amount,
+      amount: parsed.amount_converted,
+      amount_original: parsed.amount_original,
+      currency: parsed.currency,
+      exchange_rate: parsed.exchange_rate,
       date,
       category,
       notes,
@@ -178,9 +185,16 @@ export async function createGeneralExpenseFromTemplateAction(formData: FormData)
 
   if (!template?.is_active) redirect("/business/general-expenses");
 
+  const settings = await getOrCreateUserFinancialSettings(user.id);
+  const base = settings.base_currency.trim().toUpperCase() || "EUR";
+  const amt = Number(template.amount ?? 0);
+
   await supabase.from("business_expenses").insert({
     user_id: user.id,
-    amount: Number(template.amount ?? 0),
+    amount: amt,
+    amount_original: amt,
+    currency: base,
+    exchange_rate: 1,
     date: isoToday(),
     category: String(template.category ?? ""),
     notes: template.notes ?? null,

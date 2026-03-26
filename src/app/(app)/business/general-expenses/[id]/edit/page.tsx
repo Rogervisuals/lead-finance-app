@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { IncomeCurrencyFields } from "@/components/forms/IncomeCurrencyFields";
+import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 import {
   deleteBusinessExpenseAction,
   updateBusinessExpenseAction,
@@ -10,8 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function EditBusinessExpensePage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams?: { error?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -19,14 +23,19 @@ export default async function EditBusinessExpensePage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: expense } = await supabase
-    .from("business_expenses")
-    .select("id,amount,date,category,notes")
-    .eq("user_id", user.id)
-    .eq("id", params.id)
-    .single();
+  const [{ data: expense }, settings] = await Promise.all([
+    supabase
+      .from("business_expenses")
+      .select("id,amount,amount_original,currency,exchange_rate,date,category,notes")
+      .eq("user_id", user.id)
+      .eq("id", params.id)
+      .single(),
+    getOrCreateUserFinancialSettings(user.id),
+  ]);
 
   if (!expense) redirect("/business/general-expenses");
+
+  const baseCurrency = settings.base_currency;
 
   return (
     <div className="min-w-0 space-y-6">
@@ -40,23 +49,26 @@ export default async function EditBusinessExpensePage({
       </div>
 
       <section className="min-w-0 overflow-x-clip rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+        {searchParams?.error === "exchange_rate" ? (
+          <div className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
+            Enter a positive exchange rate when the currency differs from your base
+            currency ({baseCurrency}).
+          </div>
+        ) : null}
         <form
           action={updateBusinessExpenseAction}
           className="grid min-w-0 max-w-full gap-3 sm:grid-cols-2 [&>label]:min-w-0 [&>div]:min-w-0"
         >
           <input type="hidden" name="id" value={expense.id} />
 
-          <label className="min-w-0 space-y-1 sm:col-span-2">
-            <span className="text-sm text-zinc-300">Amount *</span>
-            <input
-              required
-              name="amount"
-              type="number"
-              step="0.01"
-              defaultValue={expense.amount ?? 0}
-              className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
-            />
-          </label>
+          <IncomeCurrencyFields
+            baseCurrency={baseCurrency}
+            defaultCurrency={expense.currency ?? "EUR"}
+            defaultAmountOriginal={
+              expense.amount_original != null ? expense.amount_original : expense.amount
+            }
+            defaultExchangeRate={expense.exchange_rate ?? 1}
+          />
 
           <label className="block min-w-0 max-w-full space-y-1 overflow-hidden">
             <span className="text-sm text-zinc-300">Date *</span>

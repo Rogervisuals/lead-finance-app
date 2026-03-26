@@ -35,10 +35,7 @@ export default function LoginPage() {
 
   return (
     <div className="w-full rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
-      <h1 className="mb-2 text-xl font-semibold">Sign in</h1>
-      <p className="mb-5 text-sm text-zinc-400">
-        Use your Supabase auth credentials.
-      </p>
+      <h1 className="mb-5 text-xl font-semibold">Sign in</h1>
 
       {error ? (
         <div className="mb-4 rounded-md border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200">
