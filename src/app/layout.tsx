@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { getThemeBootstrapInlineScript } from "@/lib/theme";
 import "./globals.css";
 import "./theme-light.css";
@@ -27,6 +28,7 @@ export default function RootLayout({
         <div className="min-h-screen bg-zinc-950 text-zinc-50">
           {children}
         </div>
+        <SpeedInsights />
       </body>
     </html>
   );
