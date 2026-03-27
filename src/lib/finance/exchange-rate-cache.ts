@@ -42,6 +42,17 @@ export function getValidCachedFxRate(
   from: string,
   to: string
 ): { rate: number; fetchedAt: number } | null {
+  const cached = getCachedFxRate(from, to);
+  if (!cached) return null;
+  if (Date.now() - cached.fetchedAt > FX_CACHE_TTL_MS) return null;
+  return cached;
+}
+
+/** Returns cached rate + timestamp if entry exists, regardless of age. */
+export function getCachedFxRate(
+  from: string,
+  to: string
+): { rate: number; fetchedAt: number } | null {
   const key = pairKey(from, to);
   const store = readStore();
   const entry = store[key];
@@ -49,7 +60,6 @@ export function getValidCachedFxRate(
     return null;
   }
   if (!Number.isFinite(entry.rate) || entry.rate <= 0) return null;
-  if (Date.now() - entry.fetchedAt > FX_CACHE_TTL_MS) return null;
   return { rate: entry.rate, fetchedAt: entry.fetchedAt };
 }
 

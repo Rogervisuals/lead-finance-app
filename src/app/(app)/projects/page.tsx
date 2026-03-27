@@ -48,6 +48,15 @@ export default async function ProjectsPage() {
 
   const clientById = new Map((clients ?? []).map((c) => [c.id, c.name]));
 
+  const sortedProjects = [...(projects ?? [])].sort((a: any, b: any) => {
+    const af = String(a.status ?? "").toLowerCase() === "finished";
+    const bf = String(b.status ?? "").toLowerCase() === "finished";
+    if (af !== bf) return af ? 1 : -1;
+    const ca = new Date(a.created_at).getTime();
+    const cb = new Date(b.created_at).getTime();
+    return cb - ca;
+  });
+
   return (
     <div className="min-w-0 space-y-6">
       <div>
@@ -144,7 +153,7 @@ export default async function ProjectsPage() {
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
           Existing projects
         </h2>
-        {projects?.length ? (
+        {sortedProjects.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
@@ -157,9 +166,16 @@ export default async function ProjectsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {projects.map((p: any) => (
+                {sortedProjects.map((p: any) => (
                   <tr key={p.id}>
-                    <td className="py-2 text-zinc-200">{p.name}</td>
+                    <td className="py-2">
+                      <Link
+                        href={`/projects/${p.id}`}
+                        className="text-zinc-200 hover:underline"
+                      >
+                        {p.name}
+                      </Link>
+                    </td>
                     <td className="py-2 text-zinc-400">
                       <Link
                         href={`/clients/${p.client_id}`}

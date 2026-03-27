@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 
 export function WelcomeUserMenu({ displayName }: { displayName: string }) {
@@ -15,6 +16,12 @@ export function WelcomeUserMenu({ displayName }: { displayName: string }) {
       </div>
       <div className="pointer-events-none absolute right-0 top-full z-30 pt-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
         <div className="w-44 rounded-md border border-zinc-800 bg-zinc-950 p-1 shadow-lg">
+          <Link
+            href="/profile"
+            className="block rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-900"
+          >
+            Profile
+          </Link>
           <SignOutButton variant="menu" />
         </div>
       </div>

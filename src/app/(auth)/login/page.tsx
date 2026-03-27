@@ -70,6 +70,14 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
           />
+          <div className="pt-1 text-right">
+            <Link
+              href="/reset-password"
+              className="text-xs text-sky-400 hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
         </div>
 
         <button

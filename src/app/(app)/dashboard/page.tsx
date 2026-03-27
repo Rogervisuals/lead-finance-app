@@ -378,13 +378,21 @@ export default async function DashboardPage({
             View
           </button>
           </form>
+          <Link
+            href={settingsOpen ? dashboardBaseUrl : settingsOpenUrl}
+            aria-label="Open settings"
+            className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40 md:hidden"
+          >
+            <span aria-hidden>⚙</span>
+          </Link>
         </div>
         <div className="hidden gap-2 md:flex">
           <Link
             href={settingsOpen ? dashboardBaseUrl : settingsOpenUrl}
-            className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
+            aria-label="Open settings"
+            className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
           >
-            Settings
+            <span>Settings</span>
           </Link>
         </div>
       </div>

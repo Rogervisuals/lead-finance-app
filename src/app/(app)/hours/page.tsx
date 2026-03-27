@@ -6,11 +6,17 @@ import { deleteHourAction } from "../server-actions/hours";
 
 export const dynamic = "force-dynamic";
 
+const LOG_PAGE_SIZE = 20;
+
 function sumHours(rows: Array<{ hours: number | string | null | undefined }>) {
   return rows.reduce((acc, r) => acc + Number(r.hours ?? 0), 0);
 }
 
-export default async function HoursPage() {
+export default async function HoursPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string };
+}) {
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
@@ -24,25 +30,44 @@ export default async function HoursPage() {
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
 
-  const [{ data: hoursRows }, { data: monthRows }, { data: dayRows }] =
+  const [{ count: logCount }, { data: monthRows }, { data: dayRows }] =
     await Promise.all([
       supabase
         .from("hours")
-        .select(
-          "id,start_time,end_time,hours,notes,project_id,project:projects(name),client:clients(name)"
-        )
-        .order("start_time", { ascending: false }),
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id),
       supabase
         .from("hours")
         .select("hours,project_id,project:projects(name),client:clients(name)")
+        .eq("user_id", user.id)
         .gte("start_time", monthStart.toISOString())
         .lt("start_time", monthEnd.toISOString()),
       supabase
         .from("hours")
         .select("hours")
+        .eq("user_id", user.id)
         .gte("start_time", dayStart.toISOString())
         .lt("start_time", dayEnd.toISOString()),
     ]);
+
+  const pageRaw = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
+  const totalLogEntries = logCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalLogEntries / LOG_PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, pageRaw), totalPages);
+  const from = (currentPage - 1) * LOG_PAGE_SIZE;
+  const to = from + LOG_PAGE_SIZE - 1;
+
+  const { data: hoursRows } = await supabase
+    .from("hours")
+    .select(
+      "id,start_time,end_time,hours,notes,project_id,project:projects(name),client:clients(name)"
+    )
+    .eq("user_id", user.id)
+    .order("start_time", { ascending: false })
+    .range(from, to);
+
+  const logPageUrl = (p: number) =>
+    p <= 1 ? "/hours" : `/hours?page=${p}`;
 
   const totalMonthHours = sumHours((monthRows ?? []) as any);
   const totalDayHours = sumHours((dayRows ?? []) as any);
@@ -102,81 +127,116 @@ export default async function HoursPage() {
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
           All work logged by date/time
         </h2>
-        {hoursRows?.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead className="text-left text-xs text-zinc-500">
-                <tr>
-                  <th className="py-2 pr-2">Client / Project</th>
-                  <th className="py-2 pr-2">Start</th>
-                  <th className="py-2 pr-2">End</th>
-                  <th className="w-24 whitespace-nowrap py-2 text-right">Hours</th>
-                  <th className="min-w-[10rem] py-2 pl-8">
-                    Notes
-                  </th>
-                  <th className="w-36 py-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {(hoursRows ?? []).map((r: any) => {
-                  const project = r.project ?? r.projects;
-                  const client = r.client ?? r.clients;
-                  const projectName =
-                    (Array.isArray(project) ? project[0]?.name : project?.name) ??
-                    null;
-                  const clientName =
-                    (Array.isArray(client) ? client[0]?.name : client?.name) ??
-                    null;
-                  const label =
-                    projectName && clientName
-                      ? `${clientName} / ${projectName}`
-                      : projectName
-                        ? projectName
-                        : clientName
-                          ? `${clientName} (client only)`
-                          : "—";
-                  return (
-                    <tr key={r.id} className="align-top">
-                      <td className="py-2 text-zinc-200">
-                        {label}
-                      </td>
-                      <td className="py-2 text-zinc-400">
-                        {r.start_time ? formatISODateTime(r.start_time) : "—"}
-                      </td>
-                      <td className="py-2 text-zinc-400">
-                        {r.end_time ? formatISODateTime(r.end_time) : "—"}
-                      </td>
-                      <td className="py-2 text-right tabular-nums text-zinc-200 whitespace-nowrap">
-                        {r.hours == null ? "—" : Number(r.hours).toFixed(2)}
-                      </td>
-                      <td className="py-2 pl-8 text-zinc-400">
-                        {r.notes ?? "—"}
-                      </td>
-                      <td className="py-2 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Link
-                            href={`/hours/${r.id}/edit`}
-                            className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
-                          >
-                            Edit
-                          </Link>
-                          <form action={deleteHourAction}>
-                            <input type="hidden" name="id" value={r.id} />
-                            <button
-                              type="submit"
+        {totalLogEntries > 0 ? (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="text-left text-xs text-zinc-500">
+                  <tr>
+                    <th className="py-2 pr-2">Client / Project</th>
+                    <th className="py-2 pr-2">Start</th>
+                    <th className="py-2 pr-2">End</th>
+                    <th className="w-24 whitespace-nowrap py-2 text-right">Hours</th>
+                    <th className="min-w-[10rem] py-2 pl-8">
+                      Notes
+                    </th>
+                    <th className="w-36 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {(hoursRows ?? []).map((r: any) => {
+                    const project = r.project ?? r.projects;
+                    const client = r.client ?? r.clients;
+                    const projectName =
+                      (Array.isArray(project) ? project[0]?.name : project?.name) ??
+                      null;
+                    const clientName =
+                      (Array.isArray(client) ? client[0]?.name : client?.name) ??
+                      null;
+                    const label =
+                      projectName && clientName
+                        ? `${clientName} / ${projectName}`
+                        : projectName
+                          ? projectName
+                          : clientName
+                            ? `${clientName} (client only)`
+                            : "—";
+                    return (
+                      <tr key={r.id} className="align-top">
+                        <td className="py-2 text-zinc-200">
+                          {label}
+                        </td>
+                        <td className="py-2 text-zinc-400">
+                          {r.start_time ? formatISODateTime(r.start_time) : "—"}
+                        </td>
+                        <td className="py-2 text-zinc-400">
+                          {r.end_time ? formatISODateTime(r.end_time) : "—"}
+                        </td>
+                        <td className="py-2 text-right tabular-nums text-zinc-200 whitespace-nowrap">
+                          {r.hours == null ? "—" : Number(r.hours).toFixed(2)}
+                        </td>
+                        <td className="py-2 pl-8 text-zinc-400">
+                          {r.notes ?? "—"}
+                        </td>
+                        <td className="py-2 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Link
+                              href={`/hours/${r.id}/edit`}
                               className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                             >
-                              Delete
-                            </button>
-                          </form>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                              Edit
+                            </Link>
+                            <form action={deleteHourAction}>
+                              <input type="hidden" name="id" value={r.id} />
+                              <button
+                                type="submit"
+                                className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
+                              >
+                                Delete
+                              </button>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {totalPages > 1 ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800 pt-4">
+                <div className="text-xs text-zinc-500">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <div className="flex gap-2">
+                  {currentPage > 1 ? (
+                    <Link
+                      href={logPageUrl(currentPage - 1)}
+                      className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
+                    >
+                      Previous
+                    </Link>
+                  ) : (
+                    <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-600">
+                      Previous
+                    </span>
+                  )}
+                  {currentPage < totalPages ? (
+                    <Link
+                      href={logPageUrl(currentPage + 1)}
+                      className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
+                    >
+                      Next
+                    </Link>
+                  ) : (
+                    <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-600">
+                      Next
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : (
           <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
             No hours logged yet.

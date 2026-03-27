@@ -6,15 +6,18 @@ import { getUserOrNull, createSupabaseServerClient } from "@/lib/supabase/server
 import { THEME_COOKIE_NAME, type ThemeMode } from "@/lib/theme";
 import { getNavbarDisplayLabel } from "@/lib/auth-display-name";
 import { isAdminUser } from "@/lib/admin";
-import { AiCreateClientAssistant } from "@/components/ai/AiCreateClientAssistant";
+import { LazyAiCreateClientAssistant } from "@/components/ai/LazyAiCreateClientAssistant";
 import { WelcomeUserMenu } from "@/components/auth/WelcomeUserMenu";
 import { FeedbackFloatingButton } from "@/components/feedback/FeedbackFloatingButton";
+import { FxCachePrewarm } from "@/components/finance/FxCachePrewarm";
 import { MobileNav } from "@/components/nav/MobileNav";
+import { RoutePrefetcher } from "@/components/nav/RoutePrefetcher";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { ActiveTimerNavWithSuspense } from "@/components/timer/ActiveTimerNavWithSuspense";
 import { getActiveTimerForUser } from "@/lib/active-timer";
 
 export const dynamic = "force-dynamic";
+const ENABLE_LINK_PREFETCH = process.env.NODE_ENV === "production";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await getUserOrNull();
@@ -48,6 +51,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3">
             <Link
               href="/dashboard"
+              prefetch={ENABLE_LINK_PREFETCH}
               className="text-sm font-semibold text-sky-300 transition-colors hover:text-sky-200"
             >
               Lead Finance
@@ -96,7 +100,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="relative z-0 mx-auto min-w-0 max-w-6xl px-4 py-6">{children}</main>
-      <AiCreateClientAssistant />
+      <FxCachePrewarm />
+      {ENABLE_LINK_PREFETCH ? <RoutePrefetcher /> : null}
+      <LazyAiCreateClientAssistant />
       <FeedbackFloatingButton />
     </div>
   );
@@ -106,6 +112,7 @@ function NavItem({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
       href={href}
+      prefetch={ENABLE_LINK_PREFETCH}
       className="rounded-md px-2 py-1 text-sm text-zinc-200 hover:bg-zinc-900 hover:text-white"
     >
       {children}

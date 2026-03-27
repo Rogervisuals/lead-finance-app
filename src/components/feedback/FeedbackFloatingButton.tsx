@@ -10,7 +10,6 @@ import { submitFeedbackAction } from "@/app/(app)/server-actions/feedback";
 export function FeedbackFloatingButton() {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [modalKey, setModalKey] = useState(0);
-  const [showSentToast, setShowSentToast] = useState(false);
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<
     { type: "ok"; text: string } | { type: "err"; text: string } | null
@@ -25,14 +24,7 @@ export function FeedbackFloatingButton() {
     return () => document.removeEventListener("keydown", onKey);
   }, [isFeedbackOpen]);
 
-  useEffect(() => {
-    if (!showSentToast) return;
-    const id = window.setTimeout(() => setShowSentToast(false), 2200);
-    return () => window.clearTimeout(id);
-  }, [showSentToast]);
-
   function openFeedback() {
-    console.log("[Feedback] button clicked — opening modal");
     setModalKey((k) => k + 1);
     setFeedback(null);
     setIsFeedbackOpen(true);
@@ -51,10 +43,8 @@ export function FeedbackFloatingButton() {
     startTransition(async () => {
       const result = await submitFeedbackAction(fd);
       if (result.ok) {
-        console.log("[Feedback] submitted successfully — closing modal");
         form.reset();
-        closeFeedback();
-        setShowSentToast(true);
+        setFeedback({ type: "ok", text: "Feedback sent. Thanks for sharing this!" });
       } else {
         setFeedback({ type: "err", text: result.error });
       }
@@ -73,17 +63,6 @@ export function FeedbackFloatingButton() {
           Feedback
         </button>
       </div>
-
-      {showSentToast ? (
-        <div className="pointer-events-none fixed bottom-20 right-5 z-[202]">
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-800/70 bg-emerald-950/90 px-3 py-2 text-sm text-emerald-200 shadow-lg">
-            <span aria-hidden className="text-emerald-300">
-              ✅
-            </span>
-            <span>Feedback sent</span>
-          </div>
-        </div>
-      ) : null}
 
       {isFeedbackOpen ? (
         <div className="pointer-events-auto fixed inset-0 z-[201] flex items-end justify-center p-4 sm:items-center">
@@ -105,28 +84,36 @@ export function FeedbackFloatingButton() {
               id="feedback-title"
               className="text-base font-semibold text-zinc-100"
             >
-              Send feedback
+              {feedback?.type === "ok" ? "Feedback sent" : "Send feedback"}
             </h2>
             <form onSubmit={onSubmit} className="mt-3 space-y-3">
-              <textarea
-                name="message"
-                required
-                rows={5}
-                placeholder="Your thoughts, bugs, ideas…"
-                disabled={pending}
-                className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-sky-600 disabled:opacity-60"
-              />
+              {feedback?.type === "ok" ? (
+                <div className="rounded-md border border-emerald-900/60 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+                  {feedback.text}
+                </div>
+              ) : (
+                <textarea
+                  name="message"
+                  required
+                  rows={5}
+                  placeholder="Your thoughts, bugs, ideas…"
+                  disabled={pending}
+                  className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-sky-600 disabled:opacity-60"
+                />
+              )}
               {feedback?.type === "err" ? (
                 <p className="text-sm text-rose-400">{feedback.text}</p>
               ) : null}
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={pending}
-                  className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
-                >
-                  {pending ? "Sending…" : "Submit"}
-                </button>
+                {feedback?.type !== "ok" ? (
+                  <button
+                    type="submit"
+                    disabled={pending}
+                    className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                  >
+                    {pending ? "Sending…" : "Submit"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={closeFeedback}

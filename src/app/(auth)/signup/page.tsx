@@ -5,6 +5,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+function getFriendlySignupError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("password should contain at least one character of each")) {
+    return "Password should contain at least one uppercase, lowercase, digit and symbol.";
+  }
+  return message;
+}
+
 export default function SignupPage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
@@ -34,7 +42,7 @@ export default function SignupPage() {
     });
 
     if (error) {
-      setError(error.message);
+      setError(getFriendlySignupError(error.message));
       setLoading(false);
       return;
     }

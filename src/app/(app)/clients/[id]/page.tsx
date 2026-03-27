@@ -17,6 +17,8 @@ import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 
 export const dynamic = "force-dynamic";
 
+const HOURS_PAGE_SIZE = 20;
+
 function sumIncomeConverted(
   rows: Array<{ amount_converted?: string | number | null | undefined }>
 ) {
@@ -29,8 +31,10 @@ function sumHours(rows: Array<{ hours: string | number | null | undefined }>) {
 
 export default async function ClientSummaryPage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams?: { page?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -93,18 +97,41 @@ export default async function ClientSummaryPage({
   if (incomeError) throw new Error(incomeError.message);
   if (sameNameError) throw new Error(sameNameError.message);
 
-  const projectIds = (projects ?? []).map((p: any) => p.id);
+  const pageRaw = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
 
-  const { data: hourRows } = await supabase
+  const [{ data: allHoursAgg }, { count: hoursCount }] = await Promise.all([
+    supabase
+      .from("hours")
+      .select("hours,project_id")
+      .eq("user_id", user.id)
+      .eq("client_id", clientId),
+    supabase
+      .from("hours")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("client_id", clientId),
+  ]);
+
+  const totalHourEntries = hoursCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalHourEntries / HOURS_PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, pageRaw), totalPages);
+  const from = (currentPage - 1) * HOURS_PAGE_SIZE;
+  const to = from + HOURS_PAGE_SIZE - 1;
+
+  const { data: hourPageRows } = await supabase
     .from("hours")
     .select("id,project_id,client_id,start_time,end_time,hours,notes")
     .eq("user_id", user.id)
     .eq("client_id", clientId)
     .order("start_time", { ascending: false })
-    .limit(200);
+    .range(from, to);
+
+  const hoursClientBase = `/clients/${clientId}`;
+  const hoursPageUrl = (p: number) =>
+    p <= 1 ? hoursClientBase : `${hoursClientBase}?page=${p}`;
 
   const incomeTotal = sumIncomeConverted(incomeRows ?? []);
-  const hoursTotal = sumHours(hourRows ?? []);
+  const hoursTotal = sumHours(allHoursAgg ?? []);
   const overallRate = safeRate(incomeTotal, hoursTotal);
   // Net in base currency (`amount_converted`); original currency shown per row.
   const incomeNet = incomeTotal;
@@ -125,7 +152,7 @@ export default async function ClientSummaryPage({
 
   const hoursByProject = new Map<string, number>();
   let hoursClientOnly = 0;
-  for (const r of hourRows ?? []) {
+  for (const r of allHoursAgg ?? []) {
     const pid = (r as any).project_id as string | null;
     if (pid) {
       hoursByProject.set(
@@ -301,7 +328,14 @@ export default async function ClientSummaryPage({
               <tbody className="divide-y divide-zinc-800">
                 {projects.map((p: any) => (
                   <tr key={p.id}>
-                    <td className="py-2 text-zinc-200">{p.name}</td>
+                    <td className="py-2">
+                      <Link
+                        href={`/projects/${p.id}`}
+                        className="text-zinc-200 hover:underline"
+                      >
+                        {p.name}
+                      </Link>
+                    </td>
                     <td className="py-2 text-zinc-400">{p.status ?? "—"}</td>
                     <td className="py-2 text-right text-zinc-200">
                       <CurrencyWithUsd
@@ -400,43 +434,87 @@ export default async function ClientSummaryPage({
         </div>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
-          <h2 className="mb-3 text-sm font-semibold text-zinc-200">Hours</h2>
-          {hourRows?.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-left text-xs text-zinc-500">
-                  <tr>
-                    <th className="py-2">Project</th>
-                    <th className="py-2">Start</th>
-                    <th className="py-2">End</th>
-                    <th className="py-2 text-right">Hours</th>
-                    <th className="py-2">Notes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800">
-                  {(hourRows ?? []).slice(0, 20).map((r: any) => {
-                    const projectName = r.project_id
-                      ? (projects ?? []).find((p: any) => p.id === r.project_id)?.name ?? "—"
-                      : "No project";
-                    return (
-                      <tr key={r.id} className="align-top">
-                        <td className="py-2 text-zinc-200">{projectName}</td>
-                        <td className="py-2 text-zinc-400">
-                          {formatISODateTime(r.start_time)}
-                        </td>
-                        <td className="py-2 text-zinc-400">
-                          {formatISODateTime(r.end_time)}
-                        </td>
-                        <td className="py-2 text-right text-zinc-200">
-                          {Number(r.hours ?? 0).toFixed(2)}
-                        </td>
-                        <td className="py-2 text-zinc-400">{r.notes ?? "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-sm font-semibold text-zinc-200">Hours</h2>
+            {totalHourEntries > 0 ? (
+              <p className="text-xs text-zinc-500">
+                Showing {currentPage * HOURS_PAGE_SIZE - HOURS_PAGE_SIZE + 1}–
+                {Math.min(currentPage * HOURS_PAGE_SIZE, totalHourEntries)} of{" "}
+                {totalHourEntries}
+              </p>
+            ) : null}
+          </div>
+          {hourPageRows?.length ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs text-zinc-500">
+                    <tr>
+                      <th className="py-2">Project</th>
+                      <th className="py-2">Start</th>
+                      <th className="py-2">End</th>
+                      <th className="py-2 text-right">Hours</th>
+                      <th className="py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800">
+                    {(hourPageRows ?? []).map((r: any) => {
+                      const projectName = r.project_id
+                        ? (projects ?? []).find((p: any) => p.id === r.project_id)?.name ?? "—"
+                        : "No project";
+                      return (
+                        <tr key={r.id} className="align-top">
+                          <td className="py-2 text-zinc-200">{projectName}</td>
+                          <td className="py-2 text-zinc-400">
+                            {formatISODateTime(r.start_time)}
+                          </td>
+                          <td className="py-2 text-zinc-400">
+                            {formatISODateTime(r.end_time)}
+                          </td>
+                          <td className="py-2 text-right text-zinc-200">
+                            {Number(r.hours ?? 0).toFixed(2)}
+                          </td>
+                          <td className="py-2 text-zinc-400">{r.notes ?? "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {totalPages > 1 ? (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800 pt-4">
+                  <div className="text-xs text-zinc-500">
+                    Page {currentPage} of {totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    {currentPage > 1 ? (
+                      <Link
+                        href={hoursPageUrl(currentPage - 1)}
+                        className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
+                      >
+                        Previous
+                      </Link>
+                    ) : (
+                      <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-600">
+                        Previous
+                      </span>
+                    )}
+                    {currentPage < totalPages ? (
+                      <Link
+                        href={hoursPageUrl(currentPage + 1)}
+                        className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
+                      >
+                        Next
+                      </Link>
+                    ) : (
+                      <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-600">
+                        Next
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
               No hours logged for this client yet.

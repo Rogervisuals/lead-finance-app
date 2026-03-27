@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 
+const ENABLE_LINK_PREFETCH = process.env.NODE_ENV === "production";
+
 export function MobileNav({
   displayName,
   showAdminFeedback = false,
@@ -64,6 +66,9 @@ export function MobileNav({
             <p className="mt-1.5 truncate text-[15px] font-medium leading-snug text-zinc-100">
               {displayName}
             </p>
+            <div className="mt-2">
+              <MobileItem href="/profile">Profile</MobileItem>
+            </div>
           </div>
 
           <div className="grid gap-1 text-sm">
@@ -120,6 +125,7 @@ function MobileItem({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
       href={href}
+      prefetch={ENABLE_LINK_PREFETCH}
       className="rounded-md px-2 py-1.5 text-zinc-200 transition-colors hover:bg-zinc-900 hover:text-white"
     >
       {children}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency } from "@/lib/finance/format";
 import {
-  getValidCachedFxRate,
+  getCachedFxRate,
   setCachedFxRate,
 } from "@/lib/finance/exchange-rate-cache";
 import { fetchFxRate } from "@/lib/finance/exchange-rate";
@@ -50,6 +50,11 @@ export function IncomeCurrencyFields({
   const [rateLoading, setRateLoading] = useState(false);
   const [rateError, setRateError] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const exchangeRateRef = useRef(exchangeRate);
+
+  useEffect(() => {
+    exchangeRateRef.current = exchangeRate;
+  }, [exchangeRate]);
 
   /** Re-render periodically so "Last updated X min ago" stays accurate. */
   const [, setLabelTick] = useState(0);
@@ -59,8 +64,7 @@ export function IncomeCurrencyFields({
     return () => window.clearInterval(id);
   }, [lastUpdatedAt]);
 
-  /** Only refetch FX when the user changes currency (avoids overwriting edit rates / Strict Mode double-fetch) */
-  const prevCurrency = useRef(currency);
+  /** Prevent stale async responses from overwriting latest state. */
   const fetchSeqRef = useRef(0);
 
   const showRate = currency !== base;
@@ -75,9 +79,6 @@ export function IncomeCurrencyFields({
   }, [amountStr, exchangeRate, showRate]);
 
   useEffect(() => {
-    if (prevCurrency.current === currency) return;
-    prevCurrency.current = currency;
-
     if (currency === base) {
       setExchangeRate("");
       setRateError(false);
@@ -89,17 +90,31 @@ export function IncomeCurrencyFields({
     let cancelled = false;
     const seq = ++fetchSeqRef.current;
 
-    const cached = getValidCachedFxRate(currency, base);
+    const cached = getCachedFxRate(currency, base);
+    const reverseCached = getCachedFxRate(base, currency);
+    const hasExistingRateValue = exchangeRateRef.current.trim() !== "";
 
     if (cached) {
       setExchangeRate(String(cached.rate));
       setRateError(false);
       setRateLoading(false);
       setLastUpdatedAt(cached.fetchedAt);
+    } else if (reverseCached) {
+      // Instant fallback from inverse pair (e.g. EUR|USD cached -> derive USD|EUR)
+      const inverted = 1 / reverseCached.rate;
+      if (Number.isFinite(inverted) && inverted > 0) {
+        setExchangeRate(String(inverted));
+        setRateError(false);
+        setRateLoading(false);
+        setLastUpdatedAt(reverseCached.fetchedAt);
+      }
     } else {
-      setRateLoading(true);
+      // Show spinner only if we truly have no usable value to show yet.
+      setRateLoading(!hasExistingRateValue);
       setRateError(false);
-      setLastUpdatedAt(null);
+      if (!hasExistingRateValue) {
+        setLastUpdatedAt(null);
+      }
     }
 
     void (async () => {
@@ -116,7 +131,8 @@ export function IncomeCurrencyFields({
         return;
       }
 
-      if (!cached) {
+      // Keep existing value visible on failures; only show error if nothing to fall back to.
+      if (!cached && !reverseCached && !hasExistingRateValue) {
         setRateError(true);
       }
     })();
@@ -176,8 +192,7 @@ export function IncomeCurrencyFields({
             value={exchangeRate}
             onChange={(e) => setExchangeRate(e.target.value)}
             placeholder={rateLoading ? "Loading…" : "e.g. 0.92"}
-            disabled={rateLoading}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500 disabled:opacity-60"
+            className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
           />
           {rateLoading ? (
             <span className="text-xs text-zinc-500">Fetching live rate…</span>
