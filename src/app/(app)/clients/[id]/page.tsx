@@ -314,7 +314,7 @@ export default async function ClientSummaryPage({
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">Projects</h2>
         {projects?.length ? (
-          <div className="overflow-x-auto">
+          <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
@@ -389,7 +389,7 @@ export default async function ClientSummaryPage({
             Income
           </h2>
           {incomeRows?.length ? (
-            <div className="overflow-x-auto">
+            <div className="min-w-0 max-w-full overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-xs text-zinc-500">
                   <tr>
@@ -446,7 +446,7 @@ export default async function ClientSummaryPage({
           </div>
           {hourPageRows?.length ? (
             <>
-              <div className="overflow-x-auto">
+              <div className="min-w-0 max-w-full overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="text-left text-xs text-zinc-500">
                     <tr>

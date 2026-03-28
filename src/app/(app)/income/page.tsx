@@ -251,7 +251,7 @@ export default async function IncomePage({
         </h2>
 
         {incomeRows?.length ? (
-          <div className="overflow-x-auto">
+          <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
@@ -259,7 +259,7 @@ export default async function IncomePage({
                   <th className="py-2">Client / Project</th>
                   <th className="py-2">Description</th>
                   <th className="py-2 text-right">Amount</th>
-                  <th className="min-w-[17rem] py-2 text-right">Actions</th>
+                  <th className="min-w-0 py-2 text-right sm:whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">

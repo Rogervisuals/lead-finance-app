@@ -159,14 +159,14 @@ export default async function ProjectDetailPage({
 
         {hourPageRows?.length ? (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
+            <div className="min-w-0 max-w-full overflow-x-auto">
+              <table className="w-full min-w-[min(100%,640px)] text-sm">
                 <thead className="text-left text-xs text-zinc-500">
                   <tr>
                     <th className="py-2 pr-2">Start</th>
                     <th className="py-2 pr-2">End</th>
                     <th className="w-24 py-2 text-right">Hours</th>
-                    <th className="min-w-[10rem] py-2 pl-4">Notes</th>
+                    <th className="min-w-0 py-2 pl-4 sm:min-w-[8rem]">Notes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800">

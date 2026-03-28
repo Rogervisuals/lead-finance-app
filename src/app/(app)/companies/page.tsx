@@ -78,7 +78,7 @@ export default async function CompaniesPage({
           Your companies
         </h2>
         {companies?.length ? (
-          <div className="overflow-x-auto">
+          <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>

@@ -45,10 +45,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   ]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50">
+    <div className="min-h-screen min-w-0 overflow-x-clip bg-zinc-950 text-zinc-50">
       <header className="relative z-50 border-b border-zinc-800/70 bg-zinc-950/50 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex min-w-0 max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <Link
               href="/dashboard"
               prefetch={ENABLE_LINK_PREFETCH}
@@ -74,7 +74,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               {admin ? <NavItem href="/feedback">Feedback</NavItem> : null}
             </nav>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <ThemeToggle serverTheme={serverTheme} />
             <ActiveTimerNavWithSuspense
               initialTimer={initialTimer}

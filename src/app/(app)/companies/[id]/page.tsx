@@ -161,7 +161,7 @@ export default async function CompanyDetailPage({
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
           Clients
         </h2>
-        <div className="overflow-x-auto">
+        <div className="min-w-0 max-w-full overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-zinc-500">
               <tr>

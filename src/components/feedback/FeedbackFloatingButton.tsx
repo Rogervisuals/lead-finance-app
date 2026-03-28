@@ -52,20 +52,21 @@ export function FeedbackFloatingButton() {
   }
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[200]">
-      {/* Clickable hit area for the floating button only */}
-      <div className="pointer-events-auto absolute bottom-5 right-5">
-        <button
-          type="button"
-          onClick={openFeedback}
-          className="rounded-full border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-xs font-medium text-zinc-200 shadow-lg backdrop-blur transition-colors hover:border-sky-700 hover:bg-zinc-800 hover:text-white"
-        >
-          Feedback
-        </button>
+    <>
+      <div className="pointer-events-none fixed inset-0 z-[205]">
+        <div className="pointer-events-auto absolute bottom-5 right-5">
+          <button
+            type="button"
+            onClick={openFeedback}
+            className="rounded-full border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-xs font-medium text-zinc-200 shadow-lg backdrop-blur transition-colors hover:border-sky-700 hover:bg-zinc-800 hover:text-white"
+          >
+            Feedback
+          </button>
+        </div>
       </div>
 
       {isFeedbackOpen ? (
-        <div className="pointer-events-auto fixed inset-0 z-[201] flex items-end justify-center p-4 sm:items-center">
+        <div className="pointer-events-auto fixed inset-0 z-[240] flex items-end justify-center p-4 sm:items-center">
           <button
             type="button"
             aria-label="Close"
@@ -126,6 +127,6 @@ export function FeedbackFloatingButton() {
           </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

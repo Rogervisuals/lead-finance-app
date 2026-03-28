@@ -129,15 +129,15 @@ export default async function HoursPage({
         </h2>
         {totalLogEntries > 0 ? (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
+            <div className="min-w-0 max-w-full overflow-x-auto">
+              <table className="w-full min-w-[min(100%,720px)] text-sm">
                 <thead className="text-left text-xs text-zinc-500">
                   <tr>
                     <th className="py-2 pr-2">Client / Project</th>
                     <th className="py-2 pr-2">Start</th>
                     <th className="py-2 pr-2">End</th>
                     <th className="w-24 whitespace-nowrap py-2 text-right">Hours</th>
-                    <th className="min-w-[10rem] py-2 pl-8">
+                    <th className="min-w-0 py-2 pl-8 sm:min-w-[8rem]">
                       Notes
                     </th>
                     <th className="w-36 py-2 text-right">Actions</th>
@@ -249,7 +249,7 @@ export default async function HoursPage({
           Hours per project / client (month)
         </h2>
         {perProjectRows.length ? (
-          <div className="overflow-x-auto">
+          <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>

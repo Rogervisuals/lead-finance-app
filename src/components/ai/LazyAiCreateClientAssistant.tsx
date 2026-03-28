@@ -3,10 +3,10 @@
 import dynamic from "next/dynamic";
 
 const AiCreateClientAssistant = dynamic(
-  () => import("@/components/ai/AiCreateClientAssistant").then((m) => m.AiCreateClientAssistant),
-  {
-    ssr: false,
-  }
+  () =>
+    import("@/components/ai/AiCreateClientAssistant").then(
+      (m) => m.AiCreateClientAssistant
+    )
 );
 
 export function LazyAiCreateClientAssistant() {

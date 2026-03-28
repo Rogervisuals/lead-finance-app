@@ -185,14 +185,14 @@ export default async function MileagePage() {
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">Existing mileage</h2>
         {rows?.length ? (
-          <div className="overflow-x-auto">
+          <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
                   <th className="py-2">Date</th>
                   <th className="py-2">Project</th>
                   <th className="py-2 pr-2 text-right">Distance (km)</th>
-                  <th className="min-w-[10rem] py-2 pl-8">Notes</th>
+                  <th className="min-w-0 py-2 pl-8 sm:min-w-[8rem]">Notes</th>
                   <th className="py-2 text-right">Actions</th>
                 </tr>
               </thead>
