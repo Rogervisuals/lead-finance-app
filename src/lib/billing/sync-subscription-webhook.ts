@@ -3,36 +3,77 @@ import type Stripe from "stripe";
 import type { PlanId } from "@/lib/subscription/types";
 
 /**
- * Fields we read from subscription objects returned by the Stripe API.
- * Some `stripe` package versions narrow `Subscription` in ways that omit these
- * properties in TypeScript even though the API always includes them.
+ * Billing fields returned by the Stripe HTTP API that are not always present on
+ * the published `Stripe.Subscription` / `Stripe.SubscriptionItem` interfaces.
  */
-type StripeSubscriptionScheduleApi = {
-  cancel_at_period_end?: unknown;
-  current_period_end?: unknown;
+type SubscriptionWithBillingFields = Stripe.Subscription & {
+  current_period_end?: number;
+  cancel_at?: number | null;
+  cancel_at_period_end?: boolean;
 };
 
-function readScheduleFromStripeSubscriptionObject(
-  sub: Stripe.Subscription
-): {
+type SubscriptionItemWithBillingPeriod = Stripe.SubscriptionItem & {
+  current_period_end?: number;
+};
+
+/** True when renewal is off but access continues until the end of the paid period. */
+function isCancelAtPeriodEndScheduled(sub: Stripe.Subscription): boolean {
+  const s = sub as SubscriptionWithBillingFields;
+
+  // standaard Stripe flag
+  if (sub.cancel_at_period_end === true) {
+    return true;
+  }
+
+  // future cancel date
+  if (
+    typeof s.cancel_at === "number" &&
+    Number.isFinite(s.cancel_at) &&
+    s.cancel_at > Math.floor(Date.now() / 1000)
+  ) {
+    return true;
+  }
+
+  // 🔥 FIX: already cancelled but still running until period end
+  if (sub.canceled_at) {
+    return true;
+  }
+
+  return false;
+}
+
+function periodEndUnixFromSubscription(sub: Stripe.Subscription): number | null {
+  const s = sub as SubscriptionWithBillingFields;
+  if (typeof s.current_period_end === "number" && Number.isFinite(s.current_period_end)) {
+    return s.current_period_end;
+  }
+  const item = sub.items?.data?.[0] as SubscriptionItemWithBillingPeriod | undefined;
+  if (
+    item &&
+    typeof item.current_period_end === "number" &&
+    Number.isFinite(item.current_period_end)
+  ) {
+    return item.current_period_end;
+  }
+  if (
+    isCancelAtPeriodEndScheduled(sub) &&
+    typeof s.cancel_at === "number" &&
+    Number.isFinite(s.cancel_at)
+  ) {
+    return s.cancel_at;
+  }
+  return null;
+}
+
+function readScheduleFromStripeSubscriptionObject(sub: Stripe.Subscription): {
   cancel_at_period_end: boolean;
   subscription_current_period_end: string | null;
 } {
-  const raw = sub as unknown as StripeSubscriptionScheduleApi;
-  const item = sub.items?.data?.[0];
-
-const endUnix =
-  typeof raw.current_period_end === "number"
-    ? raw.current_period_end
-    : typeof item?.current_period_end === "number"
-    ? item.current_period_end
-    : null;
+  const endUnix = periodEndUnixFromSubscription(sub);
   return {
-    cancel_at_period_end: Boolean(raw.cancel_at_period_end),
+    cancel_at_period_end: isCancelAtPeriodEndScheduled(sub),
     subscription_current_period_end:
-      typeof endUnix === "number" && Number.isFinite(endUnix)
-        ? new Date(endUnix * 1000).toISOString()
-        : null,
+      endUnix !== null ? new Date(endUnix * 1000).toISOString() : null,
   };
 }
 
@@ -52,16 +93,24 @@ export async function syncSubscriptionScheduleFromStripe(
     subscription_current_period_end: string | null;
   }
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("subscriptions")
     .update({
       cancel_at_period_end: schedule.cancel_at_period_end,
       subscription_current_period_end: schedule.subscription_current_period_end,
     })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("user_id");
 
   if (error) {
     return { ok: false, message: error.message };
+  }
+  if (!data?.length) {
+    return {
+      ok: false,
+      message:
+        "No subscriptions row for this user — schedule fields were not written. Ensure plan upsert runs before schedule sync.",
+    };
   }
   return { ok: true };
 }

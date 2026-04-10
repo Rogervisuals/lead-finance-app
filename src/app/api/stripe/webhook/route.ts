@@ -197,6 +197,26 @@ async function handleCustomerSubscriptionUpdated(
       ? subscription.customer
       : subscription.customer?.id;
 
+  let plan: PlanId = "pro";
+  const metaPlan = subscription.metadata?.plan;
+  if (metaPlan === "basic" || metaPlan === "pro") {
+    plan = metaPlan;
+  } else {
+    const price = subscription.items.data[0]?.price;
+    const priceId = typeof price === "string" ? price : price?.id;
+    const resolved = resolvePaidPlanFromStripePriceId(priceId ?? null);
+    if (resolved) plan = resolved;
+  }
+
+  // Ensure a subscriptions row exists before schedule fields are applied — otherwise
+  // syncSubscriptionScheduleFromStripe's UPDATE matches 0 rows and silently does nothing.
+  if (subscription.status === "active" || subscription.status === "trialing") {
+    const up = await upsertSubscriptionFromStripeWebhook(supabase, userId, plan, "active");
+    if (!up.ok) {
+      console.error("[stripe webhook] customer.subscription.updated upsert:", up.message);
+    }
+  }
+
   const idRes = await updateSubscriptionStripeIds(supabase, userId, {
     stripe_customer_id: customerId ?? undefined,
     stripe_subscription_id: subscription.id,
@@ -212,26 +232,6 @@ async function handleCustomerSubscriptionUpdated(
   );
   if (!sch.ok) {
     console.error("[stripe webhook] customer.subscription.updated schedule:", sch.message);
-  }
-
-  if (subscription.status !== "active" && subscription.status !== "trialing") {
-    return;
-  }
-
-  let plan: PlanId = "pro";
-  const metaPlan = subscription.metadata?.plan;
-  if (metaPlan === "basic" || metaPlan === "pro") {
-    plan = metaPlan;
-  } else {
-    const price = subscription.items.data[0]?.price;
-    const priceId = typeof price === "string" ? price : price?.id;
-    const resolved = resolvePaidPlanFromStripePriceId(priceId ?? null);
-    if (resolved) plan = resolved;
-  }
-
-  const up = await upsertSubscriptionFromStripeWebhook(supabase, userId, plan, "active");
-  if (!up.ok) {
-    console.error("[stripe webhook] customer.subscription.updated upsert:", up.message);
   }
 }
 
