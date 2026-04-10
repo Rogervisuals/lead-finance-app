@@ -2,17 +2,38 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import type { PlanId } from "@/lib/subscription/types";
 
+/**
+ * Fields we read from subscription objects returned by the Stripe API.
+ * Some `stripe` package versions narrow `Subscription` in ways that omit these
+ * properties in TypeScript even though the API always includes them.
+ */
+type StripeSubscriptionScheduleApi = {
+  cancel_at_period_end?: unknown;
+  current_period_end?: unknown;
+};
+
+function readScheduleFromStripeSubscriptionObject(
+  sub: Stripe.Subscription
+): {
+  cancel_at_period_end: boolean;
+  subscription_current_period_end: string | null;
+} {
+  const raw = sub as unknown as StripeSubscriptionScheduleApi;
+  const endUnix = raw.current_period_end;
+  return {
+    cancel_at_period_end: Boolean(raw.cancel_at_period_end),
+    subscription_current_period_end:
+      typeof endUnix === "number" && Number.isFinite(endUnix)
+        ? new Date(endUnix * 1000).toISOString()
+        : null,
+  };
+}
+
 export function scheduleFieldsFromStripeSubscription(sub: Stripe.Subscription): {
   cancel_at_period_end: boolean;
   subscription_current_period_end: string | null;
 } {
-  return {
-    cancel_at_period_end: Boolean(sub.cancel_at_period_end),
-    subscription_current_period_end:
-      typeof sub.current_period_end === "number"
-        ? new Date(sub.current_period_end * 1000).toISOString()
-        : null,
-  };
+  return readScheduleFromStripeSubscriptionObject(sub);
 }
 
 /** Keeps DB in sync with Stripe cancel-at-period-end and billing period end (service role). */
