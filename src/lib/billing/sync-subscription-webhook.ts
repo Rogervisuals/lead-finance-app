@@ -19,7 +19,14 @@ function readScheduleFromStripeSubscriptionObject(
   subscription_current_period_end: string | null;
 } {
   const raw = sub as unknown as StripeSubscriptionScheduleApi;
-  const endUnix = raw.current_period_end;
+  const item = sub.items?.data?.[0];
+
+const endUnix =
+  typeof raw.current_period_end === "number"
+    ? raw.current_period_end
+    : typeof item?.current_period_end === "number"
+    ? item.current_period_end
+    : null;
   return {
     cancel_at_period_end: Boolean(raw.cancel_at_period_end),
     subscription_current_period_end:
