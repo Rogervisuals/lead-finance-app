@@ -9,16 +9,27 @@ import {
   createClientAction,
   deleteClientAction,
 } from "../server-actions/clients";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
+import { canCreateClient, hasAccess } from "@/lib/permissions";
+import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
 
 export const dynamic = "force-dynamic";
 
-export default async function ClientsPage() {
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams?: { error?: string };
+}) {
+  const ui = getUi(getServerLocale());
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
+
+  const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
 
   const [{ clients, hasCompanyLink }, companies] = await Promise.all([
     selectClientsForUser(supabase, user.id),
@@ -29,33 +40,62 @@ export default async function ClientsPage() {
     companies.map((c) => [c.id, c.name])
   );
 
+  const clientCount = clients?.length ?? 0;
+  const allowCreate = canCreateClient(plan, clientCount);
+  const maxClients = hasAccess(plan, "maxClients");
+  const maxLabel =
+    typeof maxClients === "number" && Number.isFinite(maxClients)
+      ? String(maxClients)
+      : "∞";
+  const showLimitError =
+    searchParams?.error === "client_limit" || searchParams?.error === "client_count";
+
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Clients</h1>
+          <h1 className="text-2xl font-semibold">{ui.clients.title}</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Add clients you work with and track their projects.
+            {ui.clients.subtitle}
+          </p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Plan: <span className="text-zinc-400">{plan}</span> — clients {clientCount} / {maxLabel}
           </p>
         </div>
       </div>
 
+      {showLimitError ? (
+        <div
+          className="rounded-lg border border-amber-900/50 bg-amber-950/25 px-4 py-3 text-sm text-amber-100"
+          role="alert"
+        >
+          {searchParams?.error === "client_count"
+            ? ui.clients.clientCountError
+            : ui.clients.clientLimitBanner}
+        </div>
+      ) : null}
+
       {!hasCompanyLink ? (
         <div className="rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
-          <strong className="font-medium">Company linking needs a DB update:</strong>{" "}
-          Run <code className="text-amber-100">supabase/migrations/20260318_companies.sql</code> in the
-          Supabase SQL Editor to enable organizations. Until then, your clients still show below using
-          the original company text field — nothing was deleted.
+          <strong className="font-medium">{ui.clients.companyDbBannerStrong}</strong>{" "}
+          {ui.clients.companyDbBannerRest}
         </div>
       ) : null}
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Create a client
+          {ui.clients.createTitle}
         </h2>
+        {!allowCreate ? (
+          <p className="text-sm text-zinc-500">
+            {ui.clients.clientLimitForm
+              .replace("{current}", String(clientCount))
+              .replace("{max}", maxLabel)}
+          </p>
+        ) : (
         <form action={createClientAction} className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1">
-            <span className="text-sm text-zinc-300">Name *</span>
+            <span className="text-sm text-zinc-300">{ui.clients.nameRequired}</span>
             <input
               required
               name="name"
@@ -63,7 +103,7 @@ export default async function ClientsPage() {
             />
           </label>
           <label className="space-y-1">
-            <span className="text-sm text-zinc-300">Email</span>
+            <span className="text-sm text-zinc-300">{ui.common.email}</span>
             <input
               name="email"
               type="email"
@@ -72,13 +112,13 @@ export default async function ClientsPage() {
           </label>
           {hasCompanyLink ? (
             <label className="space-y-1 sm:col-span-2">
-              <span className="text-sm text-zinc-300">Company (optional)</span>
+              <span className="text-sm text-zinc-300">{ui.clients.companyOptional}</span>
               <select
                 name="company_id"
                 className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
                 defaultValue=""
               >
-                <option value="">No company</option>
+                <option value="">{ui.common.noCompany}</option>
                 {companies.map((co) => (
                   <option key={co.id} value={co.id}>
                     {co.name}
@@ -87,23 +127,23 @@ export default async function ClientsPage() {
               </select>
               <p className="mt-1 text-xs text-zinc-500">
                 <Link href="/companies" className="text-sky-400 hover:underline">
-                  Manage companies
+                  {ui.clients.manageCompaniesLink}
                 </Link>{" "}
-                to add an organization.
+                {ui.common.addOrgHint}
               </p>
             </label>
           ) : (
             <label className="space-y-1 sm:col-span-2">
-              <span className="text-sm text-zinc-300">Company (text)</span>
+              <span className="text-sm text-zinc-300">{ui.clients.companyText}</span>
               <input
                 name="company"
                 className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
-                placeholder="Optional label until DB migration is applied"
+                placeholder={ui.clients.companyTextPlaceholder}
               />
             </label>
           )}
           <label className="space-y-1">
-            <span className="text-sm text-zinc-300">Notes</span>
+            <span className="text-sm text-zinc-300">{ui.common.notes}</span>
             <input
               name="notes"
               className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
@@ -114,26 +154,27 @@ export default async function ClientsPage() {
               type="submit"
               className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500"
             >
-              Add client
+              {ui.clients.addClient}
             </button>
           </div>
         </form>
+        )}
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Existing clients
+          {ui.clients.existingTitle}
         </h2>
         {clients?.length ? (
           <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
-                  <th className="py-2">Name</th>
-                  <th className="py-2">Email</th>
-                  <th className="py-2">Company</th>
-                  <th className="py-2">Notes</th>
-                  <th className="py-2 text-right">Actions</th>
+                  <th className="py-2">{ui.table.name}</th>
+                  <th className="py-2">{ui.table.email}</th>
+                  <th className="py-2">{ui.table.company}</th>
+                  <th className="py-2">{ui.table.notes}</th>
+                  <th className="py-2 text-right">{ui.table.actions}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -154,7 +195,7 @@ export default async function ClientsPage() {
                           href={`/companies/${c.company_id}`}
                           className="text-sky-300 hover:underline"
                         >
-                          {companyNameById.get(c.company_id) ?? "Company"}
+                          {companyNameById.get(c.company_id) ?? ui.common.company}
                         </Link>
                       ) : c.company ? (
                         <span>{c.company}</span>
@@ -171,7 +212,7 @@ export default async function ClientsPage() {
                           href={`/clients/${c.id}/edit`}
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          Edit
+                          {ui.common.edit}
                         </Link>
                         <form action={deleteClientAction}>
                           <input type="hidden" name="id" value={c.id} />
@@ -179,7 +220,7 @@ export default async function ClientsPage() {
                             type="submit"
                             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                           >
-                            Delete
+                            {ui.common.delete}
                           </button>
                         </form>
                       </div>
@@ -191,7 +232,7 @@ export default async function ClientsPage() {
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
-            No clients yet.
+            {ui.clients.empty}
           </div>
         )}
       </section>

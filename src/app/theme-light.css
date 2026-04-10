@@ -104,6 +104,19 @@ html.light .bg-zinc-950\/25 {
   background-color: rgba(248, 250, 252, 0.97) !important;
 }
 
+/* Settings & misc surfaces using zinc-950/35 or /55 */
+html.light .bg-zinc-950\/35 {
+  background-color: rgba(248, 250, 252, 0.98) !important;
+}
+html.light .bg-zinc-950\/55 {
+  background-color: #f1f5f9 !important;
+}
+
+/* Hairline dividers using bg-zinc-800/70 */
+html.light .bg-zinc-800\/70 {
+  background-color: #e2e8f0 !important;
+}
+
 /* Modal / overlay scrim */
 html.light .bg-zinc-950\/60 {
   background-color: rgba(15, 23, 42, 0.42) !important;

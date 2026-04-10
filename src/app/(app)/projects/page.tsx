@@ -5,13 +5,19 @@ import {
   createProjectAction,
   deleteProjectAction,
 } from "../server-actions/projects";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
+import { intlLocaleTag } from "@/lib/i18n/intl-locale";
+import type { Locale } from "@/lib/i18n/locale";
+import { canCreateProject, hasAccess } from "@/lib/permissions";
+import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
 
 export const dynamic = "force-dynamic";
 
-function formatDateOnly(v: string | null) {
-  if (!v) return "—";
+function formatDateOnly(v: string | null, locale: Locale, dash: string) {
+  if (!v) return dash;
   const d = new Date(`${v}T00:00:00`);
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(intlLocaleTag(locale), {
     year: "numeric",
     month: "short",
     day: "2-digit",
@@ -25,13 +31,28 @@ function projectStatusClass(status: string | null | undefined) {
   return "text-zinc-400";
 }
 
-export default async function ProjectsPage() {
+function statusLabel(raw: string | null | undefined, ui: ReturnType<typeof getUi>) {
+  const s = String(raw ?? "").toLowerCase();
+  if (s === "active") return ui.projects.statusActive;
+  if (s === "finished") return ui.projects.statusFinished;
+  return raw?.trim() ? raw : ui.common.dash;
+}
+
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams?: { error?: string };
+}) {
+  const locale = getServerLocale();
+  const ui = getUi(locale);
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
+
+  const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
 
   const [{ data: clients }, { data: projects }] = await Promise.all([
     supabase
@@ -57,25 +78,55 @@ export default async function ProjectsPage() {
     return cb - ca;
   });
 
+  const projectCount = (projects ?? []).length;
+  const allowCreate = canCreateProject(plan, projectCount);
+  const maxProjects = hasAccess(plan, "maxProjects");
+  const maxLabel =
+    typeof maxProjects === "number" && Number.isFinite(maxProjects)
+      ? String(maxProjects)
+      : "∞";
+  const showLimitError =
+    searchParams?.error === "project_limit" || searchParams?.error === "project_count";
+
   return (
     <div className="min-w-0 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Projects</h1>
+        <h1 className="text-2xl font-semibold">{ui.projects.title}</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Track the work you do for each client.
+          {ui.projects.subtitle}
+        </p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Plan: <span className="text-zinc-400">{plan}</span> — projects {projectCount} / {maxLabel}
         </p>
       </div>
 
+      {showLimitError ? (
+        <div
+          className="rounded-lg border border-amber-900/50 bg-amber-950/25 px-4 py-3 text-sm text-amber-100"
+          role="alert"
+        >
+          {searchParams?.error === "project_count"
+            ? "Could not verify your project count. Try again."
+            : "You have reached the project limit for your plan. Delete a project or upgrade to add more."}
+        </div>
+      ) : null}
+
       <section className="min-w-0 overflow-x-clip rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Create a project
+          {ui.projects.createTitle}
         </h2>
+        {!allowCreate ? (
+          <p className="text-sm text-zinc-500">
+            Project limit reached for your current plan ({projectCount} / {maxLabel}). Remove a project
+            or upgrade to create more.
+          </p>
+        ) : (
         <form
           action={createProjectAction}
           className="grid min-w-0 max-w-full gap-3 sm:grid-cols-2 [&>label]:min-w-0 [&>div]:min-w-0"
         >
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm text-zinc-300">Client *</span>
+            <span className="text-sm text-zinc-300">{ui.projects.clientRequired}</span>
             <select
               required
               name="client_id"
@@ -90,7 +141,7 @@ export default async function ProjectsPage() {
           </label>
 
           <label className="space-y-1">
-            <span className="text-sm text-zinc-300">Project name *</span>
+            <span className="text-sm text-zinc-300">{ui.projects.projectName}</span>
             <input
               required
               name="name"
@@ -99,19 +150,19 @@ export default async function ProjectsPage() {
           </label>
 
           <label className="space-y-1">
-            <span className="text-sm text-zinc-300">Status</span>
+            <span className="text-sm text-zinc-300">{ui.projects.status}</span>
             <select
               name="status"
               defaultValue="active"
               className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
             >
-              <option value="active">Active</option>
-              <option value="finished">Finished</option>
+              <option value="active">{ui.projects.statusActive}</option>
+              <option value="finished">{ui.projects.statusFinished}</option>
             </select>
           </label>
 
           <label className="block min-w-0 max-w-full space-y-1 overflow-hidden">
-            <span className="text-sm text-zinc-300">Start date</span>
+            <span className="text-sm text-zinc-300">{ui.projects.startDate}</span>
             <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 [color-scheme:dark]">
               <input
                 name="start_date"
@@ -122,7 +173,7 @@ export default async function ProjectsPage() {
           </label>
 
           <label className="block min-w-0 max-w-full space-y-1 overflow-hidden">
-            <span className="text-sm text-zinc-300">End date</span>
+            <span className="text-sm text-zinc-300">{ui.projects.endDate}</span>
             <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 [color-scheme:dark]">
               <input
                 name="end_date"
@@ -138,31 +189,32 @@ export default async function ProjectsPage() {
               className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500"
               disabled={!clients?.length}
             >
-              Add project
+              {ui.projects.addProject}
             </button>
             {!clients?.length ? (
               <p className="mt-2 text-xs text-zinc-500">
-                Create at least one client first.
+                {ui.projects.needClientFirst}
               </p>
             ) : null}
           </div>
         </form>
+        )}
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Existing projects
+          {ui.projects.existingTitle}
         </h2>
         {sortedProjects.length ? (
           <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
-                  <th className="py-2">Project</th>
-                  <th className="py-2">Client</th>
-                  <th className="py-2">Status</th>
-                  <th className="py-2">Dates</th>
-                  <th className="py-2 text-right">Actions</th>
+                  <th className="py-2">{ui.projects.tableProject}</th>
+                  <th className="py-2">{ui.projects.tableClient}</th>
+                  <th className="py-2">{ui.projects.tableStatus}</th>
+                  <th className="py-2">{ui.projects.tableDates}</th>
+                  <th className="py-2 text-right">{ui.table.actions}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -185,10 +237,11 @@ export default async function ProjectsPage() {
                       </Link>
                     </td>
                     <td className={`py-2 ${projectStatusClass(p.status)}`}>
-                      {p.status ?? "—"}
+                      {statusLabel(p.status, ui)}
                     </td>
                     <td className="py-2 text-zinc-400">
-                      {formatDateOnly(p.start_date)} → {formatDateOnly(p.end_date)}
+                      {formatDateOnly(p.start_date, locale, ui.common.dash)} →{" "}
+                      {formatDateOnly(p.end_date, locale, ui.common.dash)}
                     </td>
                     <td className="py-2 text-right">
                       <div className="flex justify-end gap-2">
@@ -196,7 +249,7 @@ export default async function ProjectsPage() {
                           href={`/projects/${p.id}/edit`}
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          Edit
+                          {ui.common.edit}
                         </Link>
                         <form action={deleteProjectAction}>
                           <input type="hidden" name="id" value={p.id} />
@@ -204,7 +257,7 @@ export default async function ProjectsPage() {
                             type="submit"
                             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                           >
-                            Delete
+                            {ui.common.delete}
                           </button>
                         </form>
                       </div>
@@ -216,7 +269,7 @@ export default async function ProjectsPage() {
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
-            No projects yet.
+            {ui.projects.noProjects}
           </div>
         )}
       </section>

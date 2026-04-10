@@ -3,10 +3,13 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { FeedbackAdminRow } from "@/components/feedback/FeedbackAdminRow";
 import { formatFeedbackSubmittedAt } from "@/lib/finance/format";
 import { isAdminUser } from "@/lib/admin";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function FeedbackAdminPage() {
+  const ui = getUi(getServerLocale());
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
@@ -24,22 +27,21 @@ export default async function FeedbackAdminPage() {
   return (
     <div className="min-w-0 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Feedback</h1>
+        <h1 className="text-2xl font-semibold">{ui.feedback.title}</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Submissions from users (newest first).
+          {ui.feedback.subtitle}
         </p>
       </div>
 
       {error ? (
         <div className="rounded-lg border border-rose-900/50 bg-rose-950/20 px-3 py-2 text-sm text-rose-200">
-          Could not load feedback. Check database policies and that your admin
-          email matches the RLS policy.
+          {ui.feedback.loadError}
         </div>
       ) : null}
 
       {!rows?.length ? (
         <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-          No feedback yet.
+          {ui.feedback.empty}
         </div>
       ) : (
         <ul className="space-y-3">

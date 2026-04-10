@@ -10,6 +10,8 @@ import {
   deleteExpenseAction,
 } from "../server-actions/expenses";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,7 @@ export default async function ExpensesPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const ui = getUi(getServerLocale());
   const settings = await getOrCreateUserFinancialSettings(user.id);
   const baseCurrency = settings.base_currency;
 
@@ -55,20 +58,19 @@ export default async function ExpensesPage({
   return (
     <div className="min-w-0 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Expenses</h1>
+        <h1 className="text-2xl font-semibold">{ui.expenses.title}</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Track costs and keep a clean view of profitability.
+          {ui.expenses.subtitle}
         </p>
       </div>
 
       <section className="min-w-0 overflow-x-clip rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Add expense
+          {ui.expenses.addExpense}
         </h2>
         {searchParams?.error === "exchange_rate" ? (
           <div className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
-            Enter a positive exchange rate when the currency differs from your base
-            currency ({baseCurrency}).
+            {ui.errors.incomeExchangeRate} ({baseCurrency}).
           </div>
         ) : null}
         <form
@@ -78,10 +80,13 @@ export default async function ExpensesPage({
           <ClientProjectSelect
             clients={(clients ?? []) as any}
             projects={(projects ?? []) as any}
+            clientLabel={ui.components.clientRequired}
+            projectLabel={ui.components.projectOptional}
+            noProjectLabel={ui.components.noProject}
           />
 
           <label className="block min-w-0 max-w-full space-y-1 overflow-hidden">
-            <span className="text-sm text-zinc-300">Date *</span>
+            <span className="text-sm text-zinc-300">{ui.income.dateRequired}</span>
             <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 [color-scheme:dark]">
               <input
                 required
@@ -95,7 +100,7 @@ export default async function ExpensesPage({
           <IncomeCurrencyFields baseCurrency={baseCurrency} />
 
           <label className="space-y-1">
-            <span className="text-sm text-zinc-300">Category</span>
+            <span className="text-sm text-zinc-300">{ui.expenses.category}</span>
             <select
               name="category"
               defaultValue="Travel"
@@ -107,7 +112,7 @@ export default async function ExpensesPage({
           </label>
 
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm text-zinc-300">Description</span>
+            <span className="text-sm text-zinc-300">{ui.common.description}</span>
             <input
               name="description"
               className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
@@ -120,11 +125,11 @@ export default async function ExpensesPage({
               className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60"
               disabled={!clients?.length}
             >
-              Save expense
+              {ui.expenses.saveExpense}
             </button>
             {!clients?.length ? (
               <p className="text-xs text-zinc-500">
-                Create at least one client first.
+                {ui.expenses.needClientFirst}
               </p>
             ) : null}
           </div>
@@ -133,7 +138,7 @@ export default async function ExpensesPage({
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Recent expenses
+          {ui.expenses.recentExpenses}
         </h2>
 
         {expenseRows?.length ? (
@@ -141,12 +146,12 @@ export default async function ExpensesPage({
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
-                  <th className="py-2">Date</th>
-                  <th className="py-2">Client / Project</th>
-                  <th className="py-2">Category</th>
-                  <th className="py-2">Description</th>
-                  <th className="py-2 text-right">Amount</th>
-                  <th className="py-2 text-right">Actions</th>
+                  <th className="py-2">{ui.table.date}</th>
+                  <th className="py-2">{ui.table.clientProject}</th>
+                  <th className="py-2">{ui.expenses.category}</th>
+                  <th className="py-2">{ui.table.description}</th>
+                  <th className="py-2 text-right">{ui.table.amount}</th>
+                  <th className="py-2 text-right">{ui.table.actions}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -180,7 +185,7 @@ export default async function ExpensesPage({
                           href={`/expenses/${r.id}/edit`}
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          Edit
+                          {ui.common.edit}
                         </Link>
                         <form action={deleteExpenseAction}>
                           <input type="hidden" name="id" value={r.id} />
@@ -188,7 +193,7 @@ export default async function ExpensesPage({
                             type="submit"
                             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                           >
-                            Delete
+                            {ui.common.delete}
                           </button>
                         </form>
                       </div>
@@ -200,7 +205,7 @@ export default async function ExpensesPage({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
-            No expense entries yet.
+            {ui.expenses.noEntries}
           </div>
         )}
       </section>

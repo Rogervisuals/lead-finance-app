@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CurrencyWithUsd } from "@/components/display/CurrencyWithUsd";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,8 @@ export default async function BusinessOverviewPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const ui = getUi(getServerLocale());
 
   const [{ data: expenseRows }, { data: mileageRows }, settings] =
     await Promise.all([
@@ -50,9 +54,9 @@ export default async function BusinessOverviewPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Business</h1>
+          <h1 className="text-2xl font-semibold">{ui.business.title}</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            General expenses and mileage.
+            {ui.business.subtitle}
           </p>
         </div>
 
@@ -61,20 +65,20 @@ export default async function BusinessOverviewPage() {
             href="/business/general-expenses"
             className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
           >
-            General expenses
+            {ui.nav.generalExpenses}
           </Link>
           <Link
             href="/business/mileage"
             className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
           >
-            Mileage
+            {ui.nav.mileage}
           </Link>
         </div>
       </div>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
-          <div className="text-sm text-zinc-400">Total business expenses</div>
+          <div className="text-sm text-zinc-400">{ui.business.totalBusinessExpenses}</div>
           <div className="mt-2">
             <CurrencyWithUsd
               amount={totalExpenses}
@@ -86,9 +90,9 @@ export default async function BusinessOverviewPage() {
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
           <div className="text-sm text-zinc-400">
-            Total mileage cost{" "}
+            {ui.business.totalMileageCost}{" "}
             <span className="text-zinc-500">
-              ({MILEAGE_COST_PER_KM_EUR.toFixed(2)} EUR/km)
+              ({MILEAGE_COST_PER_KM_EUR.toFixed(2)} {ui.business.perKm})
             </span>
           </div>
           <div className="mt-2">

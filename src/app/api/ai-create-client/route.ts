@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getAiDailyCap } from "@/lib/permissions";
+import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
 
 export const runtime = "nodejs";
 
@@ -94,7 +96,6 @@ type AiActionResponse =
   | AiUpdateProjectStatusResponse
   | AiDeleteProjectResponse;
 
-const MAX_REQUESTS_PER_DAY = 20;
 const MAX_WORDS = 40;
 const COOLDOWN_SECONDS = 3;
 
@@ -333,6 +334,18 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return unauthorized();
 
+  const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
+  const maxPerDay = getAiDailyCap(plan);
+  if (maxPerDay === 0) {
+    return NextResponse.json({
+      usedToday: 0,
+      maxPerDay: 0,
+      remaining: 0,
+    });
+  }
+  const unlimited = !Number.isFinite(maxPerDay) || maxPerDay === Number.POSITIVE_INFINITY;
+  const effectiveCap = unlimited ? 1_000_000 : maxPerDay;
+
   const usageDate = todayIsoDate();
   const { data: row } = await supabase
     .from("user_ai_usage")
@@ -344,8 +357,8 @@ export async function GET() {
   const usedToday = Number((row as { requests_count?: unknown } | null)?.requests_count ?? 0);
   return NextResponse.json({
     usedToday,
-    maxPerDay: MAX_REQUESTS_PER_DAY,
-    remaining: Math.max(0, MAX_REQUESTS_PER_DAY - usedToday),
+    maxPerDay: unlimited ? 1_000_000 : maxPerDay,
+    remaining: Math.max(0, effectiveCap - usedToday),
   });
 }
 
@@ -371,6 +384,22 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) return unauthorized();
 
+  const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
+  const maxPerDay = getAiDailyCap(plan);
+  const unlimited = !Number.isFinite(maxPerDay) || maxPerDay === Number.POSITIVE_INFINITY;
+  const effectiveCap = unlimited ? 1_000_000 : maxPerDay;
+
+  if (maxPerDay === 0) {
+    return NextResponse.json(
+      {
+        error: "AI assistant is not available on your current plan.",
+        usedToday: 0,
+        maxPerDay: 0,
+      },
+      { status: 403 },
+    );
+  }
+
   const usageDate = todayIsoDate();
   const { data: usageRow, error: usageError } = await supabase
     .from("user_ai_usage")
@@ -388,12 +417,12 @@ export async function POST(req: Request) {
 
   const usage = usageRow as UsageRow | null;
   const usedToday = Number(usage?.requests_count ?? 0);
-  if (usedToday >= MAX_REQUESTS_PER_DAY) {
+  if (usedToday >= effectiveCap) {
     return NextResponse.json(
       {
-        error: `Daily AI limit reached (${MAX_REQUESTS_PER_DAY}/${MAX_REQUESTS_PER_DAY}). Try again tomorrow.`,
+        error: `Daily AI limit reached (${usedToday}/${unlimited ? "∞" : effectiveCap}). Try again tomorrow.`,
         usedToday,
-        maxPerDay: MAX_REQUESTS_PER_DAY,
+        maxPerDay: unlimited ? 1_000_000 : maxPerDay,
       },
       { status: 429 },
     );
@@ -481,8 +510,8 @@ export async function POST(req: Request) {
     actions: parsedActions,
     usage: {
       usedToday: nextCount,
-      maxPerDay: MAX_REQUESTS_PER_DAY,
-      remaining: Math.max(0, MAX_REQUESTS_PER_DAY - nextCount),
+      maxPerDay: unlimited ? 1_000_000 : maxPerDay,
+      remaining: Math.max(0, effectiveCap - nextCount),
     },
   });
 }

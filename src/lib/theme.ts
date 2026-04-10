@@ -32,6 +32,8 @@ export const THEME_CHANGE_EVENT = "lead-finance-theme-change";
 export function applyThemeMode(mode: ThemeMode): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
+  // Prevent UI flicker: disable transitions during the theme class swap.
+  root.classList.add("theme-switching");
   if (mode === "light") {
     root.classList.add("light");
     root.setAttribute("data-theme", "light");
@@ -39,6 +41,8 @@ export function applyThemeMode(mode: ThemeMode): void {
     root.classList.remove("light");
     root.setAttribute("data-theme", "dark");
   }
+  // Force a reflow so the class takes effect immediately.
+  void root.clientHeight;
   try {
     localStorage.setItem(THEME_STORAGE_KEY, mode);
   } catch {
@@ -46,6 +50,9 @@ export function applyThemeMode(mode: ThemeMode): void {
   }
   setThemeCookieClient(mode);
   window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
+  window.setTimeout(() => {
+    root.classList.remove("theme-switching");
+  }, 80);
 }
 
 /** Runs synchronously before first paint — inline in root layout <head>. */

@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatISODateTime } from "@/lib/finance/format";
 import { deleteHourAction } from "../server-actions/hours";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -24,18 +26,28 @@ export default async function HoursPage({
 
   if (!user) redirect("/login");
 
+  const ui = getUi(getServerLocale());
+
   const now = new Date();
+  const yearStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+  const yearEnd = new Date(now.getFullYear() + 1, 0, 1, 0, 0, 0);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0);
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
   const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
 
-  const [{ count: logCount }, { data: monthRows }, { data: dayRows }] =
+  const [{ count: logCount }, { data: yearRows }, { data: monthRows }, { data: dayRows }] =
     await Promise.all([
       supabase
         .from("hours")
         .select("id", { count: "exact", head: true })
         .eq("user_id", user.id),
+      supabase
+        .from("hours")
+        .select("hours")
+        .eq("user_id", user.id)
+        .gte("start_time", yearStart.toISOString())
+        .lt("start_time", yearEnd.toISOString()),
       supabase
         .from("hours")
         .select("hours,project_id,project:projects(name),client:clients(name)")
@@ -69,6 +81,7 @@ export default async function HoursPage({
   const logPageUrl = (p: number) =>
     p <= 1 ? "/hours" : `/hours?page=${p}`;
 
+  const totalYearHours = sumHours((yearRows ?? []) as any);
   const totalMonthHours = sumHours((monthRows ?? []) as any);
   const totalDayHours = sumHours((dayRows ?? []) as any);
 
@@ -93,9 +106,9 @@ export default async function HoursPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Hours</h1>
+          <h1 className="text-2xl font-semibold">{ui.hours.title}</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Total hours (month) and (current day), plus your full log.
+            {ui.hours.subtitle}
           </p>
         </div>
         <div className="flex gap-2">
@@ -103,20 +116,26 @@ export default async function HoursPage({
             href="/hours/add"
             className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
           >
-            Add hours
+            {ui.hours.addHoursLink}
           </Link>
         </div>
       </div>
 
-      <section className="grid gap-3 sm:grid-cols-2">
+      <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
-          <div className="text-sm text-zinc-400">Total hours (month)</div>
+          <div className="text-sm text-zinc-400">{ui.hours.totalYear}</div>
+          <div className="mt-2 text-3xl font-semibold text-emerald-300">
+            {totalYearHours.toFixed(2)}
+          </div>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+          <div className="text-sm text-zinc-400">{ui.hours.totalMonth}</div>
           <div className="mt-2 text-3xl font-semibold text-sky-300">
             {totalMonthHours.toFixed(2)}
           </div>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
-          <div className="text-sm text-zinc-400">Total hours (current day)</div>
+          <div className="text-sm text-zinc-400">{ui.hours.totalDay}</div>
           <div className="mt-2 text-3xl font-semibold text-amber-300">
             {totalDayHours.toFixed(2)}
           </div>

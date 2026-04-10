@@ -10,6 +10,7 @@ const ROUTES_TO_PREFETCH = [
   "/income",
   "/expenses",
   "/hours",
+  "/finance/invoices",
   "/business",
   "/business/general-expenses",
   "/business/mileage",

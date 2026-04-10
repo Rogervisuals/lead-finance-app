@@ -14,10 +14,15 @@ export function ActiveTimerNavWithSuspense({
   initialTimer,
   clients,
   projects,
+  canUseTimer = true,
+  timerUpgradeMessage = "",
 }: {
   initialTimer: ActiveTimerRow | null;
   clients: ClientOpt[];
   projects: ProjectOpt[];
+  /** Free plan: clock stays visible; modal shows upgrade copy instead of the tracker. */
+  canUseTimer?: boolean;
+  timerUpgradeMessage?: string;
 }) {
   return (
     <Suspense
@@ -32,6 +37,8 @@ export function ActiveTimerNavWithSuspense({
         initialTimer={initialTimer}
         clients={clients}
         projects={projects}
+        canUseTimer={canUseTimer}
+        timerUpgradeMessage={timerUpgradeMessage}
       />
     </Suspense>
   );

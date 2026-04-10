@@ -15,6 +15,9 @@ import {
   deleteIncomeTemplateAction,
 } from "../server-actions/income";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
+
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +54,7 @@ export default async function IncomePage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  const ui = getUi(getServerLocale());
   const settings = await getOrCreateUserFinancialSettings(user.id);
   const vatEnabled = settings.vat_enabled;
   const vatRate = settings.vat_percentage / 100;
@@ -107,15 +111,15 @@ export default async function IncomePage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Income</h1>
+        <h1 className="text-2xl font-semibold">{ui.income.title}</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Track payments received from clients.
+          {ui.income.subtitle}
         </p>
       </div>
 
       <section className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-emerald-900/50 bg-zinc-900/20 p-4 lg:p-5">
-          <div className="text-sm text-zinc-400">Income (excl VAT)</div>
+          <div className="text-sm text-zinc-400">{ui.income.exclVat}</div>
           <div className="mt-3">
             <CurrencyWithUsd
               amount={totalNet}
@@ -125,12 +129,12 @@ export default async function IncomePage({
             />
           </div>
           <div className="mt-1 text-xs text-zinc-500">
-            In {baseCurrency} (converted from foreign entries).
+            {ui.income.inBaseCurrency.replace("{currency}", baseCurrency)}
           </div>
         </div>
         <div className="grid gap-3">
           <StatCard
-            title={`VAT (${settings.vat_percentage}%)`}
+            title={`${ui.income.vatStat} (${settings.vat_percentage}%)`}
             value={
               <CurrencyWithUsd
                 amount={totalVat}
@@ -144,7 +148,7 @@ export default async function IncomePage({
             valueClassName="mt-2"
           />
           <StatCard
-            title={vatEnabled ? "Total income (incl VAT)" : "Total income"}
+            title={vatEnabled ? ui.income.totalIncomeInclVat : ui.income.totalIncome}
             value={
               <CurrencyWithUsd
                 amount={totalGross}
@@ -162,18 +166,17 @@ export default async function IncomePage({
 
       {!vatEnabled ? (
         <div className="rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
-          VAT disabled
+          {ui.income.vatDisabled}
         </div>
       ) : null}
 
       <section className="min-w-0 overflow-x-clip rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Add income
+          {ui.income.addIncome}
         </h2>
         {searchParams?.error === "exchange_rate" ? (
           <div className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
-            Enter a positive exchange rate when the currency differs from your base
-            currency ({baseCurrency}).
+            {ui.errors.incomeExchangeRate} ({baseCurrency}).
           </div>
         ) : null}
         <form
@@ -183,10 +186,13 @@ export default async function IncomePage({
           <ClientProjectSelect
             clients={(clients ?? []) as any}
             projects={(projects ?? []) as any}
+            clientLabel={ui.components.clientRequired}
+            projectLabel={ui.components.projectOptional}
+            noProjectLabel={ui.components.noProject}
           />
 
           <label className="min-w-0 space-y-1">
-            <span className="text-sm text-zinc-300">Date *</span>
+            <span className="text-sm text-zinc-300">{ui.income.dateRequired}</span>
             <input
               required
               name="date"
@@ -198,7 +204,7 @@ export default async function IncomePage({
           <IncomeCurrencyFields baseCurrency={baseCurrency} />
 
           <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm text-zinc-300">Description</span>
+            <span className="text-sm text-zinc-300">{ui.common.description}</span>
             <input
               name="description"
               className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
@@ -211,11 +217,11 @@ export default async function IncomePage({
               className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-60"
               disabled={!clients?.length}
             >
-              Save income
+              {ui.income.saveIncome}
             </button>
             {!clients?.length ? (
               <p className="text-xs text-zinc-500">
-                Create at least one client first.
+                {ui.income.needClientFirst}
               </p>
             ) : null}
           </div>
@@ -224,11 +230,11 @@ export default async function IncomePage({
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Quick income templates
+          {ui.income.quickTemplates}
         </h2>
         {searchParams?.template_error === "duplicate" ? (
           <div className="mb-3 rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
-            This income is already saved as a template.
+            {ui.errors.incomeTemplateDuplicate}
           </div>
         ) : null}
         {templates?.length ? (
@@ -240,14 +246,14 @@ export default async function IncomePage({
           />
         ) : (
           <div className="text-sm text-zinc-500">
-            No templates yet. Use &quot;Add to regulars&quot; on an income item.
+            {ui.income.noTemplates}
           </div>
         )}
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Recent income
+          {ui.income.recentIncome}
         </h2>
 
         {incomeRows?.length ? (
@@ -255,11 +261,11 @@ export default async function IncomePage({
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
-                  <th className="py-2">Date</th>
-                  <th className="py-2">Client / Project</th>
-                  <th className="py-2">Description</th>
-                  <th className="py-2 text-right">Amount</th>
-                  <th className="min-w-0 py-2 text-right sm:whitespace-nowrap">Actions</th>
+                  <th className="py-2">{ui.table.date}</th>
+                  <th className="py-2">{ui.table.clientProject}</th>
+                  <th className="py-2">{ui.table.description}</th>
+                  <th className="py-2 text-right">{ui.table.amount}</th>
+                  <th className="min-w-0 py-2 text-right sm:whitespace-nowrap">{ui.table.actions}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -298,19 +304,19 @@ export default async function IncomePage({
                             disabled={alreadyRegular}
                             title={
                               alreadyRegular
-                                ? "Already saved as a quick template"
-                                : "Save as quick template"
+                                ? ui.income.templateAlready
+                                : ui.income.templateSave
                             }
                             className="shrink-0 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950/20 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-950/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-zinc-950/20"
                           >
-                            Add to regulars
+                            {ui.income.addToRegulars}
                           </button>
                         </form>
                         <Link
                           href={`/income/${r.id}/edit`}
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          Edit
+                          {ui.common.edit}
                         </Link>
                         <form action={deleteIncomeAction}>
                           <input type="hidden" name="id" value={r.id} />
@@ -318,7 +324,7 @@ export default async function IncomePage({
                             type="submit"
                             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                           >
-                            Delete
+                            🗑
                           </button>
                         </form>
                       </div>
@@ -331,7 +337,7 @@ export default async function IncomePage({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
-            No income entries yet.
+            {ui.income.noEntries}
           </div>
         )}
       </section>

@@ -9,13 +9,25 @@ import {
   HourlyRateWithUsd,
 } from "@/components/display/CurrencyWithUsd";
 import { StatCard } from "@/components/display/StatCard";
+import { DashboardBlockHint } from "@/components/dashboard/DashboardBlockHint";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
-import { updateFinancialSettingsAction } from "../server-actions/settings";
+import { sumDashboardEstimatedTax } from "@/lib/finance/company-tax";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
+import { intlLocaleTag } from "@/lib/i18n/intl-locale";
+import type { Locale } from "@/lib/i18n/locale";
+import { canViewRateInsights } from "@/lib/permissions";
+import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
+import { InsightLockedState } from "@/components/subscription/RateInsightLock";
 
 export const dynamic = "force-dynamic";
 
 function toISODateOnly(d: Date) {
-  return d.toISOString().slice(0, 10);
+  // IMPORTANT: use local date parts (not UTC) so month boundaries don't shift by timezone.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function sumIncomeConverted(
@@ -24,19 +36,23 @@ function sumIncomeConverted(
   return rows.reduce((acc, r) => acc + Number(r.amount_converted ?? 0), 0);
 }
 
-function monthLabel(year: number, monthIndex0: number) {
+function monthLabel(year: number, monthIndex0: number, locale: Locale) {
   const d = new Date(year, monthIndex0, 1);
-  return d.toLocaleString(undefined, { month: "long", year: "numeric" });
+  return d.toLocaleString(intlLocaleTag(locale), { month: "long", year: "numeric" });
 }
 
 function getRangeMeta({
   year,
   monthIndex0,
   range,
+  locale,
+  allTimeLabel,
 }: {
   year: number;
   monthIndex0: number;
   range?: string;
+  locale: Locale;
+  allTimeLabel: string;
 }) {
   const currentMonthStart = new Date(year, monthIndex0, 1);
   const currentMonthEndExclusive = new Date(year, monthIndex0 + 1, 1);
@@ -44,7 +60,7 @@ function getRangeMeta({
   if (!range) {
     return {
       kind: "month" as const,
-      label: monthLabel(year, monthIndex0),
+      label: monthLabel(year, monthIndex0, locale),
       monthStart: currentMonthStart,
       monthEndExclusive: currentMonthEndExclusive,
     };
@@ -53,7 +69,7 @@ function getRangeMeta({
   if (range === "all") {
     return {
       kind: "all" as const,
-      label: "All time",
+      label: allTimeLabel,
       monthStart: null as Date | null,
       monthEndExclusive: null as Date | null,
     };
@@ -65,14 +81,14 @@ function getRangeMeta({
     const m = Number(monthMatch[2]) - 1;
     const start = new Date(y, m, 1);
     const endExclusive = new Date(y, m + 1, 1);
-    const label = monthLabel(y, m);
+    const label = monthLabel(y, m, locale);
     return { kind: "month" as const, label, monthStart: start, monthEndExclusive: endExclusive };
   }
 
   // fallback
   return {
     kind: "month" as const,
-    label: monthLabel(year, monthIndex0),
+    label: monthLabel(year, monthIndex0, locale),
     monthStart: currentMonthStart,
     monthEndExclusive: currentMonthEndExclusive,
   };
@@ -81,7 +97,7 @@ function getRangeMeta({
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: { range?: string; settings?: string; saved?: string };
+  searchParams?: { range?: string; upgrade?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -91,10 +107,19 @@ export default async function DashboardPage({
   if (!user) redirect("/login");
 
   const userId = user.id;
-  const settings = await getOrCreateUserFinancialSettings(userId);
+
+  // These are independent once we have `userId` — do them in parallel to reduce initial load time.
+  const [plan, settings] = await Promise.all([
+    ensureSubscriptionAndGetPlan(supabase, userId),
+    getOrCreateUserFinancialSettings(userId),
+  ]);
+  const rateInsights = canViewRateInsights(plan);
+
+  const locale = getServerLocale();
+  const ui = getUi(locale);
+
   const vatEnabled = settings.vat_enabled;
   const vatRate = settings.vat_percentage / 100;
-  const taxRate = settings.tax_percentage / 100;
   const baseCurrency = settings.base_currency;
   const now = new Date();
   const year = now.getFullYear();
@@ -103,10 +128,27 @@ export default async function DashboardPage({
     year,
     monthIndex0,
     range: searchParams?.range,
+    locale,
+    allTimeLabel: ui.dashboard.allTimeLabel,
   });
 
   const isoStart = monthStart ? toISODateOnly(monthStart) : null;
   const isoEndExclusive = monthEndExclusive ? toISODateOnly(monthEndExclusive) : null;
+
+  // Start tax calculation early so it can run in parallel with the main dashboard queries.
+  // This preserves behavior (same inputs / same result) but removes a waterfall.
+  const estimatedTaxPromise = sumDashboardEstimatedTax(
+    supabase,
+    userId,
+    settings.tax_percentage,
+    kind === "all"
+      ? { kind: "all" }
+      : {
+          kind: "month",
+          startIso: isoStart!,
+          endExclusiveIso: isoEndExclusive!,
+        }
+  );
 
   const [
     { data: clients },
@@ -118,6 +160,7 @@ export default async function DashboardPage({
     { data: hoursRows },
     { data: incomeAllRows },
     { data: hoursAllRows },
+    estimatedTax,
   ] = await Promise.all([
     supabase
       .from("clients")
@@ -220,6 +263,7 @@ export default async function DashboardPage({
       .from("hours")
       .select("hours,project_id,client_id")
       .eq("user_id", userId),
+    estimatedTaxPromise,
   ]);
 
   const clientById = new Map((clients ?? []).map((c) => [c.id, c]));
@@ -290,23 +334,30 @@ export default async function DashboardPage({
   const clientRates = (clients ?? [])
     .map((c: any) => {
       const cid = c.id as string;
-      const rate = safeRate(incomeByClientAll.get(cid) ?? 0, hoursByClientAll.get(cid) ?? 0);
-      return { id: cid, name: c.name as string, rate };
+      const income = incomeByClientAll.get(cid) ?? 0;
+      const rate = safeRate(income, hoursByClientAll.get(cid) ?? 0);
+      return { id: cid, name: c.name as string, rate, income };
     })
-    .filter((x) => x.rate != null) as Array<{ id: string; name: string; rate: number }>;
+    .filter((x) => x.rate != null) as Array<{
+    id: string;
+    name: string;
+    rate: number;
+    income: number;
+  }>;
 
   const bestClient = clientRates.length
     ? clientRates.reduce((best, cur) => (cur.rate > best.rate ? cur : best))
     : null;
-  const worstClient = clientRates.length
-    ? clientRates.reduce((worst, cur) => (cur.rate < worst.rate ? cur : worst))
+
+  // Worst client should only consider clients who have actually paid (income > 0).
+  const paidClientRates = clientRates.filter((c) => c.income > 0);
+  const worstClient = paidClientRates.length
+    ? paidClientRates.reduce((worst, cur) => (cur.rate < worst.rate ? cur : worst))
     : null;
 
   // Simplified model: income values are EX VAT.
   const incomeExclVat = incomeMonth;
   const netMonth = incomeExclVat - expensesMonth;
-  // Tax % applies to net profit for the period (after expenses), not gross income excl VAT.
-  const estimatedTax = Math.max(0, netMonth) * taxRate;
   const safeToSpend = netMonth - estimatedTax;
   const incomeInclVat = vatEnabled
     ? incomeExclVat * (1 + vatRate)
@@ -330,172 +381,79 @@ export default async function DashboardPage({
     const m = String(i + 1).padStart(2, "0");
     return {
       value: `month-${year}-${m}`,
-      label: monthLabel(year, i),
+      label: monthLabel(year, i, locale),
     };
   });
-  const settingsOpen = searchParams?.settings === "open";
-  const savedNotice = searchParams?.saved === "1";
-  const dashboardBaseUrl = `/dashboard${
-    searchParams?.range ? `?range=${encodeURIComponent(searchParams.range)}` : ""
-  }`;
-  const settingsOpenUrl = `/dashboard?${
-    searchParams?.range ? `range=${encodeURIComponent(searchParams.range)}&` : ""
-  }settings=open`;
-  const settingsReturnTo = `/dashboard?${
-    searchParams?.range ? `range=${encodeURIComponent(searchParams.range)}&` : ""
-  }saved=1`;
-
   return (
     <div className="space-y-6">
+      {searchParams?.upgrade === "business" ? (
+        <div
+          className="rounded-lg border border-amber-900/50 bg-amber-950/25 px-4 py-3 text-sm text-amber-100"
+          role="alert"
+        >
+          Business features are not included in your current plan. Upgrade to access mileage and
+          general expenses.
+        </div>
+      ) : null}
+      {searchParams?.upgrade === "invoices" ? (
+        <div
+          className="rounded-lg border border-amber-900/50 bg-amber-950/25 px-4 py-3 text-sm text-amber-100"
+          role="alert"
+        >
+          Invoices (create, PDFs, and the invoices hub) are available on the Pro plan. Upgrade to
+          unlock invoice features.
+        </div>
+      ) : null}
       <div className="flex flex-col items-center gap-3 md:flex-row md:items-end md:justify-between">
         <div className="w-full text-center md:w-auto md:text-left">
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <h1 className="text-2xl font-semibold">{ui.dashboard.title}</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Summary for <span className="text-zinc-200">{label}</span>
+            {ui.dashboard.summaryFor}{" "}
+            <span className="text-zinc-200">{label}</span>
           </p>
         </div>
-        <div className="flex w-full justify-center gap-2 md:w-auto md:justify-end">
+        <div className="flex w-full flex-col items-center justify-center gap-2 sm:flex-row md:w-auto md:justify-end">
           <form method="get" action="/dashboard" className="flex gap-2">
-          <select
-            name="range"
-            defaultValue={
-              searchParams?.range ??
-              `month-${year}-${String(monthIndex0 + 1).padStart(2, "0")}`
-            }
-            className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 outline-none"
-          >
-            <option value="all">Total (all time)</option>
-            {monthOptions.map((m) => (
-              <option value={m.value} key={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="rounded-md bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
-          >
-            View
-          </button>
+            <select
+              name="range"
+              defaultValue={
+                searchParams?.range ??
+                `month-${year}-${String(monthIndex0 + 1).padStart(2, "0")}`
+              }
+              className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 outline-none"
+            >
+              <option value="all">{ui.dashboard.rangeAllTime}</option>
+              {monthOptions.map((m) => (
+                <option value={m.value} key={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              className="rounded-md bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
+            >
+              {ui.dashboard.view}
+            </button>
           </form>
-          <Link
-            href={settingsOpen ? dashboardBaseUrl : settingsOpenUrl}
-            aria-label="Open settings"
-            className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40 md:hidden"
-          >
-            <span aria-hidden>⚙</span>
-          </Link>
-        </div>
-        <div className="hidden gap-2 md:flex">
-          <Link
-            href={settingsOpen ? dashboardBaseUrl : settingsOpenUrl}
-            aria-label="Open settings"
-            className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
-          >
-            <span>Settings</span>
-          </Link>
         </div>
       </div>
 
-      {savedNotice ? (
-        <div className="rounded-md border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-sm text-emerald-200">
-          New settings saved
-        </div>
-      ) : null}
-
-      {settingsOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <Link
-            href={dashboardBaseUrl}
-            className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm"
-            aria-label="Close settings modal"
-          />
-          <section className="relative z-10 w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-900/95 p-5 shadow-2xl shadow-black/50">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-zinc-100">Settings</h3>
-              <Link
-                href={dashboardBaseUrl}
-                className="rounded-md border border-zinc-800 bg-zinc-950/40 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-950/60"
-              >
-                Close
-              </Link>
-            </div>
-            <form action={updateFinancialSettingsAction} className="grid gap-3">
-              <input type="hidden" name="return_to" value={settingsReturnTo} />
-              <label className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/30 px-3 py-2">
-                <span className="text-sm text-zinc-200">VAT enabled</span>
-                <input type="hidden" name="vat_enabled" value="false" />
-                <input
-                  name="vat_enabled"
-                  type="checkbox"
-                  value="true"
-                  defaultChecked={vatEnabled}
-                  className="h-4 w-4 accent-sky-500"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-sm text-zinc-300">VAT percentage</span>
-                <input
-                  required
-                  name="vat_percentage"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  defaultValue={settings.vat_percentage}
-                  className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-sm text-zinc-300">Tax percentage</span>
-                <input
-                  required
-                  name="tax_percentage"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  defaultValue={settings.tax_percentage}
-                  className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-sm text-zinc-500">Base currency</span>
-                <input
-                  readOnly
-                  type="text"
-                  defaultValue={settings.base_currency}
-                  tabIndex={-1}
-                  aria-readonly="true"
-                  className="w-full cursor-not-allowed rounded-md border border-zinc-800/80 bg-zinc-900/50 px-3 py-2 text-sm uppercase text-zinc-500 outline-none"
-                />
-                <span className="text-xs text-zinc-600">
-                  Locked. Totals and converted income use this currency.
-                </span>
-              </label>
-              <div className="pt-1">
-                <button
-                  type="submit"
-                  className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500"
-                >
-                  Save settings
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      ) : null}
-
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Main financial block
+          {ui.dashboard.mainFinancialBlock}
         </h2>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 xl:items-stretch">
           <div
             className="rounded-xl border border-sky-900/40 bg-zinc-950/50 p-6 md:col-span-2 xl:col-span-2 xl:row-span-2"
             data-fin-card="net"
           >
-            <div className="text-sm text-zinc-400">Net (month)</div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-sm text-zinc-400">{ui.dashboard.netMonth}</div>
+              <DashboardBlockHint>
+                <p>{ui.dashboard.netMonthHint}</p>
+              </DashboardBlockHint>
+            </div>
             <div className="mt-4">
               <CurrencyWithUsd
                 amount={netMonth}
@@ -509,7 +467,12 @@ export default async function DashboardPage({
             className="rounded-xl border border-emerald-900/40 bg-zinc-950/30 p-4"
             data-fin-card="income"
           >
-            <div className="text-sm text-zinc-400">Income (excl VAT)</div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-sm text-zinc-400">{ui.dashboard.incomeExclVat}</div>
+              <DashboardBlockHint>
+                <p>{ui.dashboard.incomeExclVatHint}</p>
+              </DashboardBlockHint>
+            </div>
             <div className="mt-2">
               <CurrencyWithUsd
                 amount={incomeExclVat}
@@ -523,7 +486,12 @@ export default async function DashboardPage({
             className="rounded-xl border border-rose-900/40 bg-zinc-950/30 p-4"
             data-fin-card="expenses"
           >
-            <div className="text-sm text-zinc-400">Expenses (month)</div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-sm text-zinc-400">{ui.dashboard.expensesMonth}</div>
+              <DashboardBlockHint>
+                <p>{ui.dashboard.expensesMonthHint}</p>
+              </DashboardBlockHint>
+            </div>
             <div className="mt-2">
               <CurrencyWithUsd
                 amount={expensesMonth}
@@ -537,8 +505,21 @@ export default async function DashboardPage({
             className="rounded-xl border border-amber-900/40 bg-zinc-950/30 p-4"
             data-fin-card="tax"
           >
-            <div className="text-sm text-zinc-400">
-              Estimated tax ({settings.tax_percentage}%)
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-sm text-zinc-400">{ui.dashboard.estimatedTax} ({settings.tax_percentage}%)</div>
+              <DashboardBlockHint>
+                <p>
+                  {ui.dashboard.estimatedTaxIntro}{" "}
+                  <Link href="/companies" className="text-sky-400 hover:underline">
+                    {ui.dashboard.estimatedTaxLinkCompany}
+                  </Link>{" "}
+                  {ui.dashboard.estimatedTaxAnd}{" "}
+                  <Link href="/clients" className="text-sky-400 hover:underline">
+                    {ui.dashboard.estimatedTaxLinkClient}
+                  </Link>{" "}
+                  {ui.dashboard.estimatedTaxRest}
+                </p>
+              </DashboardBlockHint>
             </div>
             <div className="mt-2">
               <CurrencyWithUsd
@@ -553,7 +534,12 @@ export default async function DashboardPage({
             className="rounded-xl border border-cyan-900/40 bg-zinc-950/30 p-4"
             data-fin-card="safe-to-spend"
           >
-            <div className="text-sm text-zinc-400">Safe to spend</div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-sm text-zinc-400">{ui.dashboard.safeToSpend}</div>
+              <DashboardBlockHint>
+                <p>{ui.dashboard.safeToSpendHint}</p>
+              </DashboardBlockHint>
+            </div>
             <div className="mt-2">
               <CurrencyWithUsd
                 amount={safeToSpend}
@@ -568,11 +554,22 @@ export default async function DashboardPage({
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4 sm:p-5">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Insights
+          {ui.dashboard.insights}
         </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-          <CompactInsightCard icon="📈" label="Best client" accent="emerald">
-            {bestClient ? (
+          <CompactInsightCard
+            icon="📈"
+            label={ui.dashboard.bestClient}
+            accent="emerald"
+            hint={
+              <DashboardBlockHint>
+                <p>{ui.dashboard.bestClientHint}</p>
+              </DashboardBlockHint>
+            }
+          >
+            {!rateInsights ? (
+              <InsightLockedState />
+            ) : bestClient ? (
               <div className="flex flex-col gap-3">
                 <div className="text-sm font-medium leading-snug text-zinc-300">
                   {bestClient.name}
@@ -588,8 +585,19 @@ export default async function DashboardPage({
               <span className="text-sm text-zinc-500">—</span>
             )}
           </CompactInsightCard>
-          <CompactInsightCard icon="📉" label="Worst client" accent="rose">
-            {worstClient ? (
+          <CompactInsightCard
+            icon="📉"
+            label={ui.dashboard.worstClient}
+            accent="rose"
+            hint={
+              <DashboardBlockHint>
+                <p>{ui.dashboard.worstClientHint}</p>
+              </DashboardBlockHint>
+            }
+          >
+            {!rateInsights ? (
+              <InsightLockedState />
+            ) : worstClient ? (
               <div className="flex flex-col gap-3">
                 <div className="text-sm font-medium leading-snug text-zinc-300">
                   {worstClient.name}
@@ -606,23 +614,41 @@ export default async function DashboardPage({
             )}
           </CompactInsightCard>
           <div className="sm:col-span-2">
-            <CompactInsightCard icon="⏱" label="Avg hourly rate" accent="sky">
-              <HourlyRateWithUsd
-                rate={avgRateAll}
-                currency={baseCurrency}
-                primaryClassName="text-2xl font-semibold tracking-tight text-sky-300"
-                usdClassName="mt-1.5 text-xs tabular-nums text-sky-200/75"
-              />
+            <CompactInsightCard
+              icon="⏱"
+              label={ui.dashboard.avgHourlyRate}
+              accent="sky"
+              hint={
+                <DashboardBlockHint>
+                  <p>{ui.dashboard.avgHourlyRateHint}</p>
+                </DashboardBlockHint>
+              }
+            >
+              {!rateInsights ? (
+                <InsightLockedState />
+              ) : (
+                <HourlyRateWithUsd
+                  rate={avgRateAll}
+                  currency={baseCurrency}
+                  primaryClassName="text-2xl font-semibold tracking-tight text-sky-300"
+                  usdClassName="mt-1.5 text-xs tabular-nums text-sky-200/75"
+                />
+              )}
             </CompactInsightCard>
           </div>
         </div>
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
-        <h2 className="mb-3 text-sm font-semibold text-zinc-200">VAT</h2>
+        <h2 className="mb-3 text-sm font-semibold text-zinc-200">{ui.dashboard.vatSection}</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <StatCard
-            title="Total income (incl VAT)"
+            title={ui.dashboard.totalIncomeInclVat}
+            hint={
+              <DashboardBlockHint>
+                <p>{ui.dashboard.totalIncomeInclVatHint}</p>
+              </DashboardBlockHint>
+            }
             value={
               <CurrencyWithUsd
                 amount={incomeInclVat}
@@ -636,7 +662,12 @@ export default async function DashboardPage({
             valueClassName="mt-2"
           />
           <StatCard
-            title={`VAT (${settings.vat_percentage}%) to pay`}
+            title={`${ui.dashboard.vatPrefix} (${settings.vat_percentage}%) ${ui.dashboard.vatToPay}`}
+            hint={
+              <DashboardBlockHint>
+                <p>{ui.dashboard.vatToPayHint}</p>
+              </DashboardBlockHint>
+            }
             value={
               <CurrencyWithUsd
                 amount={vatAmount}
@@ -654,28 +685,28 @@ export default async function DashboardPage({
 
       {!vatEnabled ? (
         <div className="rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
-          VAT disabled
+          {ui.dashboard.vatDisabled}
         </div>
       ) : null}
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Recent activity
+          {ui.activity.recentTitle}
         </h2>
         {recent.length === 0 ? (
           <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
-            No income or expenses yet.
+            {ui.activity.empty}
           </div>
         ) : (
           <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
-                  <th className="py-2">Date</th>
-                  <th className="py-2">Type</th>
-                  <th className="py-2">Client / Project</th>
-                  <th className="py-2">Description</th>
-                  <th className="py-2 text-right">Amount</th>
+                  <th className="py-2">{ui.table.date}</th>
+                  <th className="py-2">{ui.table.type}</th>
+                  <th className="py-2">{ui.table.clientProject}</th>
+                  <th className="py-2">{ui.table.description}</th>
+                  <th className="py-2 text-right">{ui.table.amount}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -691,7 +722,7 @@ export default async function DashboardPage({
                         {formatISODate(r.date)}
                       </td>
                       <td className="py-2 text-zinc-400">
-                        {r.kind === "income" ? "Income" : "Expense"}
+                        {r.kind === "income" ? ui.activity.income : ui.activity.expense}
                       </td>
                       <td className="py-2 text-zinc-200">{title}</td>
                       <td className="py-2 text-zinc-400">
@@ -737,11 +768,13 @@ function CompactInsightCard({
   icon,
   label,
   accent,
+  hint,
   children,
 }: {
   icon: string;
   label: string;
   accent: keyof typeof insightAccentBorder;
+  hint?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -751,13 +784,16 @@ function CompactInsightCard({
       className={`group flex h-full min-h-[9.5rem] flex-col rounded-xl border bg-zinc-950/30 p-4 shadow-sm transition-[box-shadow,border-color] duration-200 hover:shadow-md ${insightAccentBorder[accent]}`}
     >
       <div
-        className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500"
+        className="flex items-start justify-between gap-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500"
         data-insight-label
       >
-        <span aria-hidden className="text-sm opacity-90">
-          {icon}
-        </span>
-        <span>{label}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span aria-hidden className="shrink-0 text-sm opacity-90">
+            {icon}
+          </span>
+          <span>{label}</span>
+        </div>
+        {hint ? <div className="shrink-0 normal-case">{hint}</div> : null}
       </div>
       <div
         className="my-4 shrink-0 border-t border-zinc-800/80"

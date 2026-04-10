@@ -2,6 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { canUseActiveTimer } from "@/lib/permissions";
+import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
 
 function toNullableString(v: FormDataEntryValue | null) {
   const s = String(v ?? "").trim();
@@ -45,6 +47,13 @@ export async function startActiveTimerAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
+
+  const returnToEarly = String(formData.get("return_to") ?? "/dashboard").trim() || "/dashboard";
+  if (!canUseActiveTimer(plan)) {
+    redirect(`${returnToEarly}?timer_error=plan_upgrade`);
+  }
 
   const client_id = String(formData.get("client_id") ?? "").trim();
   const projectRaw = String(formData.get("project_id") ?? "").trim();

@@ -1,32 +1,10 @@
 import { formatCurrency, formatHourlyRate } from "@/lib/finance/format";
-import { roundMoney } from "@/lib/finance/income-currency";
-import { getFxRateToUsd } from "@/lib/finance/usd-equivalent";
+import { FxSubline } from "@/components/display/FxSubline";
 
 const defaultUsdLine =
   "text-xs tabular-nums text-zinc-500";
 
-export async function UsdSubline({
-  amount,
-  currency,
-  className = defaultUsdLine,
-}: {
-  amount: number;
-  currency: string;
-  className?: string;
-}) {
-  const c = currency.trim().toUpperCase() || "EUR";
-  if (c === "USD") return null;
-  const rate = await getFxRateToUsd(c);
-  if (rate == null) return null;
-  const usd = roundMoney(amount * rate);
-  return (
-    <div className={className} data-usd-subline>
-      ≈ {formatCurrency(usd, "USD")}
-    </div>
-  );
-}
-
-export async function CurrencyWithUsd({
+export function CurrencyWithUsd({
   amount,
   currency,
   className,
@@ -42,12 +20,12 @@ export async function CurrencyWithUsd({
   return (
     <div className={className}>
       <span className={primaryClassName}>{formatCurrency(amount, currency)}</span>
-      <UsdSubline amount={amount} currency={currency} className={usdClassName} />
+      <FxSubline amount={amount} currency={currency} className={usdClassName ?? defaultUsdLine} />
     </div>
   );
 }
 
-export async function HourlyRateWithUsd({
+export function HourlyRateWithUsd({
   rate,
   currency,
   className,
@@ -74,7 +52,7 @@ export async function HourlyRateWithUsd({
       className={`${align === "right" ? "text-right" : ""} ${className ?? ""}`}
     >
       <div className={primaryClassName}>{formatHourlyRate(rate, currency)}</div>
-      <UsdSubline amount={rate} currency={currency} className={usdClassName} />
+      <FxSubline amount={rate} currency={currency} className={usdClassName ?? defaultUsdLine} />
     </div>
   );
 }

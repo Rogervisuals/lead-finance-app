@@ -54,7 +54,14 @@ export function ProfileSettingsForm({
       payload.password = password;
     }
 
-    const { error } = await supabase.auth.updateUser(payload);
+    const { error } = await supabase.auth.updateUser(
+      payload,
+      payload.email
+        ? {
+            emailRedirectTo: `${window.location.origin}/profile`,
+          }
+        : undefined
+    );
     if (error) {
       setError(error.message);
       setLoading(false);

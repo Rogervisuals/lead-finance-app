@@ -7,9 +7,13 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 export function SignOutButton({
   variant = "default",
   className = "",
+  signOutLabel = "Sign out",
+  signingOutLabel = "Signing out...",
 }: {
   variant?: "default" | "menu";
   className?: string;
+  signOutLabel?: string;
+  signingOutLabel?: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -34,7 +38,7 @@ export function SignOutButton({
       disabled={loading}
       className={`${base} ${className}`.trim()}
     >
-      {loading ? "Signing out..." : "Sign out"}
+      {loading ? signingOutLabel : signOutLabel}
     </button>
   );
 }

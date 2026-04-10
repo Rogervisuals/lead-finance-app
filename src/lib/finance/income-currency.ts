@@ -31,8 +31,17 @@ export function convertToBase(
   };
 }
 
-/** Income entries: only EUR or USD (converted to your base currency for totals). */
-export const INCOME_CURRENCY_OPTIONS = ["EUR", "USD"] as const;
+/** Entry currencies and dashboard base-currency options. */
+export const INCOME_CURRENCY_OPTIONS = [
+  "EUR",
+  "USD",
+  "GBP",
+  "JPY",
+  "CNY",
+  "AUD",
+  "CAD",
+  "CHF",
+] as const;
 
 function toNullableNumberFromForm(v: FormDataEntryValue | null) {
   const s = String(v ?? "").trim();

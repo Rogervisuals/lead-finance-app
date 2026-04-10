@@ -7,7 +7,9 @@ export type ClientRowCompat = {
   email: string | null;
   company: string | null;
   notes: string | null;
+  address?: string | null;
   company_id?: string | null;
+  tax_enabled?: boolean;
   created_at?: string;
 };
 
@@ -21,7 +23,7 @@ export async function selectClientsForUser(
 ): Promise<{ clients: ClientRowCompat[]; hasCompanyLink: boolean }> {
   const full = await supabase
     .from("clients")
-    .select("id,name,email,company,notes,company_id,created_at")
+    .select("id,name,email,company,notes,address,company_id,tax_enabled,created_at")
     .eq("user_id", userId)
     .order("name", { ascending: true });
 
@@ -34,7 +36,7 @@ export async function selectClientsForUser(
 
   const legacy = await supabase
     .from("clients")
-    .select("id,name,email,company,notes,created_at")
+    .select("id,name,email,company,notes,address,created_at")
     .eq("user_id", userId)
     .order("name", { ascending: true });
 
@@ -65,7 +67,7 @@ export async function selectClientByIdForUser(
 ): Promise<{ client: ClientRowCompat | null; hasCompanyLink: boolean }> {
   const full = await supabase
     .from("clients")
-    .select("id,name,email,company,notes,company_id")
+    .select("id,name,email,company,notes,address,company_id,tax_enabled")
     .eq("id", clientId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -76,7 +78,7 @@ export async function selectClientByIdForUser(
 
   const legacy = await supabase
     .from("clients")
-    .select("id,name,email,company,notes")
+    .select("id,name,email,company,notes,address")
     .eq("id", clientId)
     .eq("user_id", userId)
     .maybeSingle();

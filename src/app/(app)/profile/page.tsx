@@ -2,10 +2,13 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getDisplayNameFromUserMetadata } from "@/lib/auth-display-name";
 import { ProfileSettingsForm } from "@/components/auth/ProfileSettingsForm";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
+  const ui = getUi(getServerLocale());
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
@@ -19,9 +22,9 @@ export default async function ProfilePage() {
   return (
     <div className="min-w-0 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Profile</h1>
+        <h1 className="text-2xl font-semibold">{ui.profile.title}</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Manage your account details and login credentials.
+          {ui.profile.subtitle}
         </p>
       </div>
 

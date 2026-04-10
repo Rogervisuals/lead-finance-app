@@ -2,6 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { canCreateProject } from "@/lib/permissions";
+import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
 
 function toNullableString(v: FormDataEntryValue | null) {
   const s = String(v ?? "").trim();
@@ -21,6 +23,19 @@ export async function createProjectAction(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
+
+  const { count, error: countErr } = await supabase
+    .from("projects")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+
+  if (countErr) redirect("/projects?error=project_count");
+  const currentCount = count ?? 0;
+  if (!canCreateProject(plan, currentCount)) {
+    redirect("/projects?error=project_limit");
+  }
 
   const client_id = String(formData.get("client_id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();

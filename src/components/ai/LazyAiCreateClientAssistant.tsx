@@ -9,6 +9,11 @@ const AiCreateClientAssistant = dynamic(
     )
 );
 
-export function LazyAiCreateClientAssistant() {
-  return <AiCreateClientAssistant />;
+export function LazyAiCreateClientAssistant({
+  canUseAi,
+}: {
+  /** False on Free plan: button stays visible but modal explains upgrade (no API calls). */
+  canUseAi: boolean;
+}) {
+  return <AiCreateClientAssistant canUseAi={canUseAi} />;
 }

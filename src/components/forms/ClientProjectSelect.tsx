@@ -12,6 +12,7 @@ export function ClientProjectSelect({
   initialProjectId,
   clientLabel = "Client *",
   projectLabel = "Project (optional)",
+  noProjectLabel = "No project",
 }: {
   clients: ClientOption[];
   projects: ProjectOption[];
@@ -19,6 +20,7 @@ export function ClientProjectSelect({
   initialProjectId?: string | null;
   clientLabel?: string;
   projectLabel?: string;
+  noProjectLabel?: string;
 }) {
   const defaultClientId = initialClientId ?? clients[0]?.id ?? "";
   const [clientId, setClientId] = useState(defaultClientId);
@@ -62,7 +64,7 @@ export function ClientProjectSelect({
           key={clientId} // reset selection on client change
           className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
         >
-          <option value="">No project</option>
+          <option value="">{noProjectLabel}</option>
           {filteredProjects.map((p) => (
             <option value={p.id} key={p.id}>
               {p.name}

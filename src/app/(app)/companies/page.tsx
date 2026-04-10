@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createCompanyAction, deleteCompanyAction } from "../server-actions/companies";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,8 @@ export default async function CompaniesPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const ui = getUi(getServerLocale());
 
   const { data: companies } = await supabase
     .from("companies")
@@ -38,29 +42,29 @@ export default async function CompaniesPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Companies</h1>
+        <h1 className="text-2xl font-semibold">{ui.companies.title}</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Group clients under an organization and see combined income and hours.
+          {ui.companies.subtitle}
         </p>
       </div>
 
       {searchParams?.error === "missing_name" ? (
         <div className="rounded-md border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-sm text-amber-200">
-          Enter a company name.
+          {ui.companies.errorMissingName}
         </div>
       ) : null}
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Add a company
+          {ui.companies.addTitle}
         </h2>
         <form action={createCompanyAction} className="flex flex-wrap items-end gap-3">
           <label className="min-w-0 flex-1 space-y-1 sm:max-w-md">
-            <span className="text-sm text-zinc-300">Company name *</span>
+            <span className="text-sm text-zinc-300">{ui.companies.nameRequired}</span>
             <input
               required
               name="name"
-              placeholder="e.g. Vertigoh Vision"
+              placeholder={ui.companies.namePlaceholder}
               className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
             />
           </label>
@@ -68,23 +72,23 @@ export default async function CompaniesPage({
             type="submit"
             className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500"
           >
-            Create
+            {ui.companies.create}
           </button>
         </form>
       </section>
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-          Your companies
+          {ui.companies.listTitle}
         </h2>
         {companies?.length ? (
           <div className="min-w-0 max-w-full overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-zinc-500">
                 <tr>
-                  <th className="py-2">Name</th>
-                  <th className="py-2">Clients</th>
-                  <th className="py-2 text-right">Actions</th>
+                  <th className="py-2">{ui.table.name}</th>
+                  <th className="py-2">{ui.companies.clientsCol}</th>
+                  <th className="py-2 text-right">{ui.table.actions}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -108,7 +112,7 @@ export default async function CompaniesPage({
                           type="submit"
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          Delete
+                          {ui.common.delete}
                         </button>
                       </form>
                     </td>
@@ -119,8 +123,7 @@ export default async function CompaniesPage({
           </div>
         ) : (
           <p className="text-sm text-zinc-500">
-            No companies yet. Create one above, then link clients from the client
-            screen.
+            {ui.companies.empty}
           </p>
         )}
       </section>

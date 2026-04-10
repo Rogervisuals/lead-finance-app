@@ -13,6 +13,7 @@ create table if not exists public.user_settings (
   vat_percentage numeric(6,2) not null default 21,
   tax_percentage numeric(6,2) not null default 30,
   base_currency varchar(8) not null default 'EUR',
+  comparison_currency varchar(8) not null default 'USD',
   updated_at timestamptz not null default now()
 );
 
@@ -22,6 +23,9 @@ alter table public.user_settings
   add column if not exists tax_percentage numeric(6,2) not null default 30;
 alter table public.user_settings
   add column if not exists base_currency varchar(8) not null default 'EUR';
+
+alter table public.user_settings
+  add column if not exists comparison_currency varchar(8) not null default 'USD';
 
 alter table public.user_settings enable row level security;
 
@@ -90,6 +94,7 @@ create table if not exists public.companies (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
+  tax_enabled boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -119,6 +124,8 @@ create policy "companies_delete_own"
 
 alter table public.clients
   add column if not exists company_id uuid references public.companies(id) on delete set null;
+
+alter table public.clients add column if not exists tax_enabled boolean not null default true;
 
 create index if not exists clients_company_id_idx on public.clients(company_id);
 
@@ -601,6 +608,60 @@ create policy "user_ai_usage_insert_own"
 drop policy if exists "user_ai_usage_update_own" on public.user_ai_usage;
 create policy "user_ai_usage_update_own"
   on public.user_ai_usage for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+-- =========================
+-- Subscriptions (plan from DB; Stripe webhooks update via service role)
+-- =========================
+create table if not exists public.subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  plan text not null,
+  status text not null,
+  created_at timestamptz not null default now(),
+  unique (user_id)
+);
+
+alter table public.subscriptions
+  add column if not exists stripe_customer_id text;
+
+alter table public.subscriptions
+  add column if not exists stripe_subscription_id text;
+
+alter table public.subscriptions
+  add column if not exists cancel_at_period_end boolean not null default false;
+
+alter table public.subscriptions
+  add column if not exists subscription_current_period_end timestamptz;
+
+alter table public.subscriptions
+  drop constraint if exists subscriptions_plan_check;
+alter table public.subscriptions
+  add constraint subscriptions_plan_check check (plan in ('free', 'basic', 'pro'));
+
+alter table public.subscriptions
+  drop constraint if exists subscriptions_status_check;
+alter table public.subscriptions
+  add constraint subscriptions_status_check check (status in ('active', 'cancelled'));
+
+create index if not exists subscriptions_user_id_idx on public.subscriptions (user_id);
+
+alter table public.subscriptions enable row level security;
+
+drop policy if exists "subscriptions_select_own" on public.subscriptions;
+create policy "subscriptions_select_own"
+  on public.subscriptions for select
+  using (user_id = auth.uid());
+
+drop policy if exists "subscriptions_insert_own" on public.subscriptions;
+create policy "subscriptions_insert_own"
+  on public.subscriptions for insert
+  with check (user_id = auth.uid());
+
+drop policy if exists "subscriptions_update_own" on public.subscriptions;
+create policy "subscriptions_update_own"
+  on public.subscriptions for update
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 

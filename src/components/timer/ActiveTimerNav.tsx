@@ -53,9 +53,19 @@ function formatHMS(totalSeconds: number) {
 }
 
 /** Isolated so the timer nav tree does not subscribe to URL in the parent (fewer re-renders). */
-function TimerErrorBanner() {
+function TimerErrorBanner({ planUpgradeMessage }: { planUpgradeMessage: string }) {
   const searchParams = useSearchParams();
   const timerError = searchParams.get("timer_error");
+  if (timerError === "plan_upgrade" && planUpgradeMessage) {
+    return (
+      <div
+        data-timer-error
+        className="mb-4 rounded-md border border-amber-900/50 bg-amber-950/25 px-3 py-2 text-xs text-amber-100"
+      >
+        {planUpgradeMessage}
+      </div>
+    );
+  }
   if (!timerError) return null;
   return (
     <div
@@ -81,10 +91,14 @@ export function ActiveTimerNav({
   initialTimer: timer,
   clients,
   projects,
+  canUseTimer = true,
+  timerUpgradeMessage = "",
 }: {
   initialTimer: ActiveTimerRow | null;
   clients: ClientOpt[];
   projects: ProjectOpt[];
+  canUseTimer?: boolean;
+  timerUpgradeMessage?: string;
 }) {
   const pathname = usePathname();
   const [returnTo, setReturnTo] = useState(() => pathname || "/dashboard");
@@ -218,10 +232,50 @@ export function ActiveTimerNav({
                 </div>
 
                 <Suspense fallback={null}>
-                  <TimerErrorBanner />
+                  <TimerErrorBanner planUpgradeMessage={timerUpgradeMessage} />
                 </Suspense>
 
-                {!timer ? (
+                {timer ? (
+                  <div className="space-y-5">
+                    <div>
+                      <div className="text-sm font-medium text-zinc-400">
+                        Client / project
+                      </div>
+                      <div className="mt-1.5 text-base font-semibold text-zinc-100">
+                        {timer.projectName !== "—"
+                          ? `${timer.clientName} — ${timer.projectName}`
+                          : timer.clientName}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-zinc-400">
+                        Elapsed
+                      </div>
+                      <div className="mt-1.5 font-mono text-3xl font-semibold text-sky-300">
+                        {formatHMS(elapsedSeconds)}
+                      </div>
+                    </div>
+                    {timer.notes ? (
+                      <div>
+                        <div className="text-sm font-medium text-zinc-400">
+                          Notes
+                        </div>
+                        <div className="mt-1.5 text-sm leading-relaxed text-zinc-200">
+                          {timer.notes}
+                        </div>
+                      </div>
+                    ) : null}
+                    <form action={stopActiveTimerAction}>
+                      <input type="hidden" name="return_to" value={returnTo} />
+                      <button
+                        type="submit"
+                        className="w-full rounded-md border border-rose-900/50 bg-rose-950/30 px-3 py-2.5 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-950/50 active:bg-rose-950/70"
+                      >
+                        Stop timer
+                      </button>
+                    </form>
+                  </div>
+                ) : canUseTimer ? (
                   <form action={startActiveTimerAction} className="grid gap-4">
                     <input type="hidden" name="return_to" value={returnTo} />
                     <label className="space-y-1.5">
@@ -290,45 +344,9 @@ export function ActiveTimerNav({
                     </button>
                   </form>
                 ) : (
-                  <div className="space-y-5">
-                    <div>
-                      <div className="text-sm font-medium text-zinc-400">
-                        Client / project
-                      </div>
-                      <div className="mt-1.5 text-base font-semibold text-zinc-100">
-                        {timer.projectName !== "—"
-                          ? `${timer.clientName} — ${timer.projectName}`
-                          : timer.clientName}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-zinc-400">
-                        Elapsed
-                      </div>
-                      <div className="mt-1.5 font-mono text-3xl font-semibold text-sky-300">
-                        {formatHMS(elapsedSeconds)}
-                      </div>
-                    </div>
-                    {timer.notes ? (
-                      <div>
-                        <div className="text-sm font-medium text-zinc-400">
-                          Notes
-                        </div>
-                        <div className="mt-1.5 text-sm leading-relaxed text-zinc-200">
-                          {timer.notes}
-                        </div>
-                      </div>
-                    ) : null}
-                    <form action={stopActiveTimerAction}>
-                      <input type="hidden" name="return_to" value={returnTo} />
-                      <button
-                        type="submit"
-                        className="w-full rounded-md border border-rose-900/50 bg-rose-950/30 px-3 py-2.5 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-950/50 active:bg-rose-950/70"
-                      >
-                        Stop timer
-                      </button>
-                    </form>
-                  </div>
+                  <p className="text-sm leading-relaxed text-zinc-300">
+                    {timerUpgradeMessage}
+                  </p>
                 )}
               </div>
             </div>,

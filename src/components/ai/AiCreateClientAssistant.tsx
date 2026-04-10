@@ -228,7 +228,11 @@ function formatMultipleMatchesError(label: "Client" | "Project", names: string[]
   return `Multiple matches found:\n- ${names.join("\n- ")}\n\nPlease be more specific`;
 }
 
-export function AiCreateClientAssistant() {
+export function AiCreateClientAssistant({
+  canUseAi = true,
+}: {
+  canUseAi?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -244,9 +248,9 @@ export function AiCreateClientAssistant() {
   }, [success]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !canUseAi) return;
     void refreshUsage();
-  }, [open]);
+  }, [open, canUseAi]);
 
   function closeModal() {
     setOpen(false);
@@ -427,6 +431,16 @@ export function AiCreateClientAssistant() {
 
     const runAction = async (aiPayload: AiResponse) => {
       if (aiPayload.action === "create_client") {
+      const limitsRes = await fetch("/api/subscription/limits");
+      const limits = (await limitsRes.json().catch(() => null)) as {
+        canCreateClient?: boolean;
+      } | null;
+      if (!limitsRes.ok || !limits?.canCreateClient) {
+        throw new Error(
+          "Client limit reached for your plan. Remove a client or upgrade to add more.",
+        );
+      }
+
       const name = aiPayload.name.trim();
       if (!name) throw new Error("No client name found.");
       let companyId: string | null = null;
@@ -457,6 +471,26 @@ export function AiCreateClientAssistant() {
         .filter((c) => c.name.length > 0);
       if (!clientsToCreate.length) {
         throw new Error("No valid clients provided");
+      }
+
+      const limitsRes = await fetch("/api/subscription/limits");
+      const limits = (await limitsRes.json().catch(() => null)) as {
+        clientCount?: number;
+        maxClients?: number | null;
+      } | null;
+      if (!limitsRes.ok || !limits) {
+        throw new Error("Could not verify subscription limits.");
+      }
+      const maxC = limits.maxClients;
+      const cc = limits.clientCount ?? 0;
+      if (
+        maxC != null &&
+        Number.isFinite(maxC) &&
+        cc + clientsToCreate.length > maxC
+      ) {
+        throw new Error(
+          "Client limit reached for your plan. Remove clients or upgrade to add more.",
+        );
       }
 
       let companyId: string | null = null;
@@ -507,6 +541,16 @@ export function AiCreateClientAssistant() {
       if (dupErr) throw new Error(dupErr.message || "Project lookup failed.");
       if ((dupRows ?? []).length > 0) {
         throw new Error("Project already exists");
+      }
+
+      const limitsRes = await fetch("/api/subscription/limits");
+      const limits = (await limitsRes.json().catch(() => null)) as {
+        canCreateProject?: boolean;
+      } | null;
+      if (!limitsRes.ok || !limits?.canCreateProject) {
+        throw new Error(
+          "Project limit reached for your plan. Remove a project or upgrade to add more.",
+        );
       }
 
       const { error: createProjectErr } = await supabase.from("projects").insert({
@@ -974,70 +1018,96 @@ export function AiCreateClientAssistant() {
             className="relative z-10 w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2
-              id="ai-create-client-title"
-              className="text-base font-semibold text-zinc-100"
-            >
-              AI assistant
-            </h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              Supported: Create/update/Delete clients, Add/delete income, Create company, Create/update/delete projects
-            </p>
-            <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-2">
-              <p className="text-xs text-zinc-400">
-                Used {usage?.usedToday ?? 0}/{usage?.maxPerDay ?? 20} today
-              </p>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                <div
-                  className="h-full bg-indigo-500 transition-all"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      Math.round(
-                        (((usage?.usedToday ?? 0) / (usage?.maxPerDay ?? 20)) * 100),
-                      ),
-                    )}%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            <form onSubmit={onSubmit} className="mt-3 space-y-3">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                required
-                rows={4}
-                placeholder="Type a command..."
-                disabled={pending}
-                className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-indigo-500 disabled:opacity-60"
-              />
-              <p className="text-xs text-zinc-500">
-                {"Use simple commands like: 'add client {name}'"}
-              </p>
-              <p className="text-xs text-zinc-500">
-                {wordsNow}/{MAX_WORDS} words
-              </p>
-              {error ? (
-                <p className="whitespace-pre-line text-sm text-rose-400">{error}</p>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="submit"
-                  disabled={pending || tooLong}
-                  className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            {!canUseAi ? (
+              <>
+                <h2
+                  id="ai-create-client-title"
+                  className="text-base font-semibold text-zinc-100"
                 >
-                  {pending ? "Processing..." : "Run"}
-                </button>
+                  AI assistant
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-zinc-300">
+                  The AI assistant is not included in the Free plan. Upgrade to{" "}
+                  <span className="text-zinc-100">Basic</span> or{" "}
+                  <span className="text-zinc-100">Pro</span> to ask natural-language questions and
+                  automate clients, income, and projects.
+                </p>
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"
+                  className="mt-5 w-full rounded-md border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-900"
                 >
                   Close
                 </button>
-              </div>
-            </form>
+              </>
+            ) : (
+              <>
+                <h2
+                  id="ai-create-client-title"
+                  className="text-base font-semibold text-zinc-100"
+                >
+                  AI assistant
+                </h2>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Supported: Create/update/Delete clients, Add/delete income, Create company, Create/update/delete projects
+                </p>
+                <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-2">
+                  <p className="text-xs text-zinc-400">
+                    Used {usage?.usedToday ?? 0}/{usage?.maxPerDay ?? 20} today
+                  </p>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                    <div
+                      className="h-full bg-indigo-500 transition-all"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round(
+                            (((usage?.usedToday ?? 0) / (usage?.maxPerDay ?? 20)) * 100),
+                          ),
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <form onSubmit={onSubmit} className="mt-3 space-y-3">
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    required
+                    rows={4}
+                    placeholder="Type a command..."
+                    disabled={pending}
+                    className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-indigo-500 disabled:opacity-60"
+                  />
+                  <p className="text-xs text-zinc-500">
+                    {"Use simple commands like: 'add client {name}'"}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {wordsNow}/{MAX_WORDS} words
+                  </p>
+                  {error ? (
+                    <p className="whitespace-pre-line text-sm text-rose-400">{error}</p>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="submit"
+                      disabled={pending || tooLong}
+                      className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                    >
+                      {pending ? "Processing..." : "Run"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       ) : null}

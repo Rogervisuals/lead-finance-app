@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as
@@ -87,4 +88,21 @@ export async function getUserOrNull() {
     data: { user },
   } = await supabase.auth.getUser();
   return user ?? null;
+}
+
+/**
+ * Server-only: bypasses RLS. Use for trusted server tasks with no user session
+ * (e.g. Stripe webhooks). Requires `SUPABASE_SERVICE_ROLE_KEY` in env.
+ */
+export function createSupabaseServiceRoleClient() {
+  assertEnv();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!key) {
+    throw new Error(
+      "Missing SUPABASE_SERVICE_ROLE_KEY (required for Stripe webhooks and other server-to-server updates)."
+    );
+  }
+  return createClient(supabaseUrl!, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }

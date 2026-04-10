@@ -4,14 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency } from "@/lib/finance/format";
 import {
   getCachedFxRate,
+  getValidCachedFxRate,
   setCachedFxRate,
 } from "@/lib/finance/exchange-rate-cache";
 import { fetchFxRate } from "@/lib/finance/exchange-rate";
 import { formatFxLastUpdated } from "@/lib/finance/fx-last-updated-label";
-import { roundMoney } from "@/lib/finance/income-currency";
-
-/** Only EUR and USD are selectable for income amounts */
-const CURRENCY_OPTIONS = ["EUR", "USD"] as const;
+import { INCOME_CURRENCY_OPTIONS, roundMoney } from "@/lib/finance/income-currency";
 
 type Props = {
   baseCurrency: string;
@@ -31,7 +29,7 @@ export function IncomeCurrencyFields({
 
   const [currency, setCurrency] = useState(() => {
     const c = String(defaultCurrency ?? "EUR").trim().toUpperCase() || "EUR";
-    return c === "EUR" || c === "USD" ? c : "EUR";
+    return (INCOME_CURRENCY_OPTIONS as readonly string[]).includes(c) ? c : "EUR";
   });
 
   const [exchangeRate, setExchangeRate] = useState(() => {
@@ -89,6 +87,30 @@ export function IncomeCurrencyFields({
 
     let cancelled = false;
     const seq = ++fetchSeqRef.current;
+
+    const validDirect = getValidCachedFxRate(currency, base);
+    const validRev = getValidCachedFxRate(base, currency);
+    if (validDirect) {
+      setExchangeRate(String(validDirect.rate));
+      setRateError(false);
+      setRateLoading(false);
+      setLastUpdatedAt(validDirect.fetchedAt);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (validRev) {
+      const inverted = 1 / validRev.rate;
+      if (Number.isFinite(inverted) && inverted > 0) {
+        setExchangeRate(String(inverted));
+        setRateError(false);
+        setRateLoading(false);
+        setLastUpdatedAt(validRev.fetchedAt);
+        return () => {
+          cancelled = true;
+        };
+      }
+    }
 
     const cached = getCachedFxRate(currency, base);
     const reverseCached = getCachedFxRate(base, currency);
@@ -170,7 +192,7 @@ export function IncomeCurrencyFields({
           onChange={(e) => setCurrency(e.target.value.trim().toUpperCase())}
           className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
         >
-          {CURRENCY_OPTIONS.map((c) => (
+          {INCOME_CURRENCY_OPTIONS.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>

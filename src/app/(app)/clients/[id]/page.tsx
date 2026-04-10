@@ -14,6 +14,14 @@ import {
 } from "@/components/display/CurrencyWithUsd";
 import { StatCard } from "@/components/display/StatCard";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
+import {
+  estimateTaxOnCompanyIncome,
+  roundMoney,
+} from "@/lib/finance/company-tax";
+import { ClientTaxToggle } from "@/components/clients/ClientTaxToggle";
+import { canViewRateInsights } from "@/lib/permissions";
+import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
+import { RateInsightLockInline } from "@/components/subscription/RateInsightLock";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +42,7 @@ export default async function ClientSummaryPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { page?: string };
+  searchParams?: { page?: string; saved?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -42,7 +50,11 @@ export default async function ClientSummaryPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
+  const rateInsights = canViewRateInsights(plan);
+
   const clientId = params.id;
+  const saved = searchParams?.saved === "1";
   const settings = await getOrCreateUserFinancialSettings(user.id);
   const vatEnabled = settings.vat_enabled;
   const vatRate = settings.vat_percentage / 100;
@@ -69,6 +81,7 @@ export default async function ClientSummaryPage({
   const [
     { data: projects, error: projectsError },
     { data: incomeRows, error: incomeError },
+    { data: expenseRows, error: expenseError },
     { data: sameNameClients, error: sameNameError },
   ] = await Promise.all([
     supabase
@@ -87,6 +100,11 @@ export default async function ClientSummaryPage({
       .order("date", { ascending: false })
       .limit(100),
     supabase
+      .from("expenses")
+      .select("amount_converted")
+      .eq("client_id", clientId)
+      .eq("user_id", user.id),
+    supabase
       .from("clients")
       .select("id,email,company")
       .eq("user_id", user.id)
@@ -95,6 +113,7 @@ export default async function ClientSummaryPage({
 
   if (projectsError) throw new Error(projectsError.message);
   if (incomeError) throw new Error(incomeError.message);
+  if (expenseError) throw new Error(expenseError.message);
   if (sameNameError) throw new Error(sameNameError.message);
 
   const pageRaw = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
@@ -131,14 +150,28 @@ export default async function ClientSummaryPage({
     p <= 1 ? hoursClientBase : `${hoursClientBase}?page=${p}`;
 
   const incomeTotal = sumIncomeConverted(incomeRows ?? []);
+  const expenseTotal = sumIncomeConverted(expenseRows ?? []);
   const hoursTotal = sumHours(allHoursAgg ?? []);
   const overallRate = safeRate(incomeTotal, hoursTotal);
-  // Net in base currency (`amount_converted`); original currency shown per row.
+  // Revenue in base currency (`amount_converted`); original currency shown per row.
   const incomeNet = incomeTotal;
   const incomeGross = vatEnabled
     ? incomeNet * (1 + vatRate)
     : incomeNet;
   const vatAmount = vatEnabled ? incomeNet * vatRate : 0;
+
+  /** Income (ex VAT) minus expenses; tax applies to this amount when tax is on. */
+  const netIncome = roundMoney(incomeNet - expenseTotal);
+
+  const clientTaxEnabled = Boolean(client.tax_enabled);
+  const taxEstimated = estimateTaxOnCompanyIncome(
+    netIncome,
+    settings.tax_percentage,
+    clientTaxEnabled
+  );
+  const incomeAfterTax = clientTaxEnabled
+    ? roundMoney(netIncome - taxEstimated)
+    : roundMoney(netIncome);
 
   const incomeByProject = new Map<string, number>();
   for (const r of incomeRows ?? []) {
@@ -221,7 +254,11 @@ export default async function ClientSummaryPage({
           ) : null}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <ClientTaxToggle
+            clientId={clientId}
+            defaultChecked={clientTaxEnabled}
+          />
           <Link
             href={`/clients/${clientId}/edit`}
             className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-900/40"
@@ -236,6 +273,12 @@ export default async function ClientSummaryPage({
           </Link>
         </div>
       </div>
+
+      {saved ? (
+        <p className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+          Tax setting saved.
+        </p>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -267,12 +310,18 @@ export default async function ClientSummaryPage({
         <StatCard
           title="Hourly rate"
           value={
-            <HourlyRateWithUsd
-              rate={overallRate}
-              currency={baseCurrency}
-              primaryClassName="text-xl font-semibold text-zinc-50"
-              usdClassName="mt-1 text-xs tabular-nums text-zinc-400"
-            />
+            rateInsights ? (
+              <HourlyRateWithUsd
+                rate={overallRate}
+                currency={baseCurrency}
+                primaryClassName="text-xl font-semibold text-zinc-50"
+                usdClassName="mt-1 text-xs tabular-nums text-zinc-400"
+              />
+            ) : (
+              <div className="mt-1 flex items-center justify-start">
+                <RateInsightLockInline size="md" />
+              </div>
+            )
           }
           accent="text-zinc-50"
           border="border-zinc-800"
@@ -280,7 +329,7 @@ export default async function ClientSummaryPage({
         />
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-xl border border-amber-900/40 bg-zinc-900/20 p-4">
           <div className="text-sm text-zinc-400">VAT ({settings.vat_percentage}%)</div>
           <div className="mt-2">
@@ -292,14 +341,67 @@ export default async function ClientSummaryPage({
             />
           </div>
         </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
-          <div className="text-sm text-zinc-400">Net income (ex VAT)</div>
+        <div className="rounded-xl border border-emerald-900/45 bg-zinc-900/20 p-4">
+          <div className="text-sm text-zinc-400">Income (ex VAT, all time)</div>
           <div className="mt-2">
             <CurrencyWithUsd
               amount={incomeNet}
               currency={baseCurrency}
+              primaryClassName="text-xl font-semibold text-emerald-200"
+              usdClassName="mt-1 text-xs tabular-nums text-emerald-200/70"
+            />
+          </div>
+        </div>
+        <div className="rounded-xl border border-rose-900/45 bg-zinc-900/20 p-4">
+          <div className="text-sm text-zinc-400">Expenses (all time)</div>
+          <div className="mt-2">
+            <CurrencyWithUsd
+              amount={expenseTotal}
+              currency={baseCurrency}
+              primaryClassName="text-xl font-semibold text-rose-300"
+              usdClassName="mt-1 text-xs tabular-nums text-rose-200/70"
+            />
+          </div>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+          <div className="text-sm text-zinc-400">Net income</div>
+          <p className="mt-0.5 text-xs text-zinc-500">Income (ex VAT) − expenses</p>
+          <div className="mt-2">
+            <CurrencyWithUsd
+              amount={netIncome}
+              currency={baseCurrency}
               primaryClassName="text-xl font-semibold text-zinc-50"
               usdClassName="mt-1 text-xs tabular-nums text-zinc-400"
+            />
+          </div>
+        </div>
+        <div className="rounded-xl border border-rose-900/45 bg-zinc-900/20 p-4">
+          <div className="text-sm text-zinc-400">
+            Tax (estimate, {settings.tax_percentage}%)
+          </div>
+          <p className="mt-0.5 text-xs text-zinc-500">Of net income when tax is on</p>
+          <div className="mt-2">
+            {clientTaxEnabled ? (
+              <CurrencyWithUsd
+                amount={taxEstimated}
+                currency={baseCurrency}
+                primaryClassName="text-xl font-semibold text-rose-200"
+                usdClassName="mt-1 text-xs tabular-nums text-rose-200/70"
+              />
+            ) : (
+              <p className="text-xl font-semibold text-zinc-500">—</p>
+            )}
+          </div>
+        </div>
+        <div className="rounded-xl border border-teal-900/45 bg-zinc-900/20 p-4">
+          <div className="text-sm text-zinc-400">Income after tax</div>
+          <p className="mt-0.5 text-xs text-zinc-500">Net income − tax (estimate)</p>
+          <div className="mt-2">
+            <CurrencyWithUsd
+              amount={incomeAfterTax}
+              currency={baseCurrency}
+              primaryClassName="text-xl font-semibold text-teal-200"
+              usdClassName="mt-1 text-xs tabular-nums text-teal-200/75"
             />
           </div>
         </div>
@@ -349,16 +451,22 @@ export default async function ClientSummaryPage({
                       {(hoursByProject.get(p.id) ?? 0).toFixed(2)}
                     </td>
                     <td className="py-2 text-right text-zinc-200">
-                      <HourlyRateWithUsd
-                        rate={safeRate(
-                          incomeByProject.get(p.id) ?? 0,
-                          hoursByProject.get(p.id) ?? 0
-                        )}
-                        currency={baseCurrency}
-                        align="right"
-                        primaryClassName="tabular-nums text-zinc-200"
-                        usdClassName="mt-0.5 text-[11px] tabular-nums text-zinc-500"
-                      />
+                      {rateInsights ? (
+                        <HourlyRateWithUsd
+                          rate={safeRate(
+                            incomeByProject.get(p.id) ?? 0,
+                            hoursByProject.get(p.id) ?? 0
+                          )}
+                          currency={baseCurrency}
+                          align="right"
+                          primaryClassName="tabular-nums text-zinc-200"
+                          usdClassName="mt-0.5 text-[11px] tabular-nums text-zinc-500"
+                        />
+                      ) : (
+                        <div className="flex justify-end">
+                          <RateInsightLockInline size="sm" />
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

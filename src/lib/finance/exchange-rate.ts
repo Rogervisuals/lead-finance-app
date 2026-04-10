@@ -1,6 +1,12 @@
+/** In-flight browser requests per pair — dedupes parallel mounts (e.g. many `FxSubline`s). */
+const inFlightBrowser = new Map<string, Promise<number | null>>();
+
 /**
  * Live spot rate: 1 unit of `from` = X units of `to` (e.g. 1 USD = 0.92 EUR).
  * Uses multiple public providers (no API key) and returns first valid response.
+ *
+ * In the browser, concurrent calls for the same pair share one network request.
+ * Server / SSR calls are not deduped (no shared global request scope).
  */
 export async function fetchFxRate(
   from: string,
@@ -10,12 +16,24 @@ export async function fetchFxRate(
   const t = to.trim().toUpperCase();
   if (f === t) return 1;
 
-  // Browser path: prefer same-origin API route to avoid CORS/network edge-cases.
   if (typeof window !== "undefined") {
-    const viaApi = await fetchFxRateViaApi(f, t);
-    if (viaApi != null) return viaApi;
+    const key = `${f}|${t}`;
+    let pending = inFlightBrowser.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const viaApi = await fetchFxRateViaApi(f, t);
+        if (viaApi != null) return viaApi;
+        return fetchFxRateFromProviders(f, t);
+      })().finally(() => {
+        inFlightBrowser.delete(key);
+      });
+      inFlightBrowser.set(key, pending);
+    }
+    return pending;
   }
 
+  const viaApi = await fetchFxRateViaApi(f, t);
+  if (viaApi != null) return viaApi;
   return fetchFxRateFromProviders(f, t);
 }
 

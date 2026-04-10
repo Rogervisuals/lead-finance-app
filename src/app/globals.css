@@ -8,6 +8,14 @@ html {
   text-size-adjust: 100%;
 }
 
+/* Avoid a brief "animated flicker" when toggling themes (especially on inputs). */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 214, 219, 220;

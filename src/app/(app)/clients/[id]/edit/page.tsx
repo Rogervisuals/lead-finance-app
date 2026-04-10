@@ -114,6 +114,21 @@ export default async function EditClientPage({
             />
           </label>
 
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm text-zinc-300">
+              Address (for invoices only)
+            </span>
+            <textarea
+              name="address"
+              rows={3}
+              defaultValue={(client as any).address ?? ""}
+              className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
+            />
+            <p className="text-xs text-zinc-500">
+              This address will only appear on invoices
+            </p>
+          </label>
+
           <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
             <button
               type="submit"
