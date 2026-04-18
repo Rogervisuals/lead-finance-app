@@ -1,6 +1,6 @@
 /**
  * Subscription rows in `public.subscriptions` — always read from Supabase (no env overrides).
- * New users get a default Pro row when missing (testing default; see migration notes).
+ * When missing, we insert a default Free row so plan-gated features (e.g. invoices) match product limits until Stripe/webhooks update the plan.
  */
 
 import { redirect } from "next/navigation";
@@ -27,7 +27,7 @@ async function readPlanFromSubscriptions(
 }
 
 /**
- * If the user has no subscription row, insert plan = pro, status = active (testing default).
+ * If the user has no subscription row, insert plan = free, status = active.
  * Returns the effective plan in one round-trip when the row already exists; otherwise
  * insert + read matches the former `ensureSubscriptionForUser` + `getUserPlanWithClient` pair.
  */
@@ -52,12 +52,12 @@ export async function ensureSubscriptionAndGetPlan(
 
   const { error: insErr } = await supabase.from("subscriptions").insert({
     user_id: userId,
-    plan: "pro",
+    plan: "free",
     status: "active",
   });
 
   if (!insErr) {
-    return getEffectivePlan("pro");
+    return getEffectivePlan("free");
   }
 
   return readPlanFromSubscriptions(supabase, userId);

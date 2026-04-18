@@ -12,7 +12,7 @@ export function Footer({ footer }: { footer: FullUi["footer"] }) {
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-center text-xs text-gray-500 dark:text-gray-400 md:flex-row md:items-center md:justify-between md:text-left">
         <div>{footer.rights}</div>
 
-        <nav className="flex flex-col items-center justify-center gap-2 md:flex-row md:justify-end">
+        <nav className="flex flex-row flex-wrap items-center justify-center gap-x-4 gap-y-1 md:justify-end">
           <a href="mailto:business@rogervisuals.com" className={linkClass}>
             {footer.contact}
           </a>

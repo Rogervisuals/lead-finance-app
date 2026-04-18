@@ -1,7 +1,21 @@
 "use client";
 
-import { useEffect, useState, useTransition, type FormEvent } from "react";
+import {
+  forwardRef,
+  memo,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  mileageStoredDistanceKm,
+  normalizeMileageLocationKey,
+} from "@/lib/mileage/distance";
 
 type AiCreateResponse = {
   action: "create_client";
@@ -132,12 +146,28 @@ type AiDeleteProjectResponse = {
   };
 };
 
+type AiAddMileageResponse = {
+  action: "add_mileage";
+  date: string;
+  template_id: string | null;
+  trip_type: "one_way" | "round_trip" | null;
+  start_location: string | null;
+  end_location: string | null;
+  leg_distance_km: number | null;
+  usage?: {
+    usedToday: number;
+    maxPerDay: number;
+    remaining: number;
+  };
+};
+
 type AiResponse =
   | AiCreateResponse
   | AiCreateClientsResponse
   | AiCreateProjectResponse
   | AiUpdateProjectStatusResponse
   | AiDeleteProjectResponse
+  | AiAddMileageResponse
   | AiUpdateResponse
   | AiAddIncomeResponse
   | AiDeleteIncomeResponse
@@ -150,8 +180,176 @@ type UsageInfo = {
   remaining: number;
 };
 
-const MAX_WORDS = 40;
+const MAX_WORDS = 45;
 const LOCAL_COOLDOWN_MS = 3000;
+
+function AiAssistantAskHint() {
+  return (
+    <div className="group/ai-hint relative -mt-0.5 shrink-0">
+      <button
+        type="button"
+        aria-label="How to ask the assistant"
+        className="flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700/70 bg-zinc-900/60 text-zinc-500 outline-none transition-colors hover:border-zinc-600 hover:bg-zinc-800/70 hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-sky-500/35"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="1.5"
+          stroke="currentColor"
+          className="size-4"
+          aria-hidden
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"
+          />
+        </svg>
+      </button>
+      <div
+        role="tooltip"
+        className="invisible absolute right-0 top-full z-20 mt-1.5 max-h-[min(65dvh,26rem)] w-[min(19rem,calc(100vw-2.5rem))] overflow-y-auto overscroll-contain rounded-lg border border-zinc-700/90 bg-zinc-950 px-3 py-2.5 text-left text-xs leading-relaxed text-zinc-300 shadow-xl opacity-0 ring-1 ring-black/20 [-webkit-overflow-scrolling:touch] transition-opacity duration-150 group-hover/ai-hint:pointer-events-auto group-hover/ai-hint:visible group-hover/ai-hint:opacity-100 group-focus-within/ai-hint:pointer-events-auto group-focus-within/ai-hint:visible group-focus-within/ai-hint:opacity-100"
+      >
+        <p className="font-medium text-zinc-200">Tips for reliable results</p>
+        <ul className="mt-2 list-disc space-y-1.5 pl-4 text-zinc-400 [&_strong]:font-medium [&_strong]:text-zinc-300">
+          <li>
+            <strong>One short message</strong> per send (max {MAX_WORDS} words), with a single clear goal.
+          </li>
+          <li>
+            <strong>Use exact names</strong> when you mean a client or project (match what you see in the app).
+          </li>
+          <li>
+            <strong>Include numbers and dates</strong> for money or mileage (for example{" "}
+            <span className="whitespace-nowrap text-zinc-300">500 EUR</span>,{" "}
+            <span className="whitespace-nowrap text-zinc-300">today</span>,{" "}
+            <span className="whitespace-nowrap text-zinc-300">yesterday</span>, or{" "}
+            <span className="whitespace-nowrap text-zinc-300">2026-03-15</span>).
+          </li>
+        </ul>
+        <div className="mt-3 border-t border-zinc-800/90 pt-2.5">
+          <p className="text-xs font-medium text-zinc-200">Example messages</p>
+          <p className="mt-1 text-[11px] leading-snug text-zinc-500">
+            Each box is one separate send. Replace the sample client, project, amounts, and dates with yours.
+          </p>
+          <div className="mt-2 space-y-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Add a person or company you bill
+              </p>
+              <p className="mt-0.5 rounded-md border border-zinc-800/80 bg-zinc-900/40 px-2 py-1.5 text-[11px] leading-snug text-zinc-200">
+                Add client Northwind Design
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Record money you received
+              </p>
+              <p className="mt-0.5 rounded-md border border-zinc-800/80 bg-zinc-900/40 px-2 py-1.5 text-[11px] leading-snug text-zinc-200">
+                Add income 1200 EUR for Northwind Design yesterday for project Brand refresh
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Start work under a client
+              </p>
+              <p className="mt-0.5 rounded-md border border-zinc-800/80 bg-zinc-900/40 px-2 py-1.5 text-[11px] leading-snug text-zinc-200">
+                Create project Website rebuild for Northwind Design, start today
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                Log driving (Business plans, saved templates)
+              </p>
+              <p className="mt-0.5 rounded-md border border-zinc-800/80 bg-zinc-900/40 px-2 py-1.5 text-[11px] leading-snug text-zinc-200">
+                Log mileage to Northwind Design using my home-to-office template
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type AiInputHandle = {
+  setValue: (next: string) => void;
+};
+
+type AiInputProps = {
+  onSubmit: (message: string) => void;
+  pending: boolean;
+  maxWords: number;
+  children?: ReactNode;
+  actions?: ReactNode;
+};
+
+const AiInput = memo(
+  forwardRef<AiInputHandle, AiInputProps>(function AiInput(
+    { onSubmit, pending, maxWords, children, actions },
+    ref,
+  ) {
+    const [input, setInput] = useState("");
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        setValue: (next: string) => setInput(next),
+      }),
+      [],
+    );
+
+    function countWords(text: string) {
+      const trimmed = text.trim();
+      if (!trimmed) return 0;
+      return trimmed.split(/\s+/).length;
+    }
+
+    function onSubmitForm(e: FormEvent<HTMLFormElement>) {
+      e.preventDefault();
+      onSubmit(input);
+    }
+
+    const wordsNow = countWords(input);
+    const tooLong = wordsNow > maxWords;
+
+    return (
+      <form onSubmit={onSubmitForm} className="mt-3 space-y-3">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          required
+          rows={4}
+          placeholder="Type a command..."
+          disabled={pending}
+          className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-indigo-500 disabled:opacity-60"
+        />
+        <p className="text-xs text-zinc-500">
+          {wordsNow}/{maxWords} words
+        </p>
+        {children}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="submit"
+            disabled={pending || tooLong}
+            className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            <span className="inline-flex items-center gap-2">
+              {pending ? (
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                />
+              ) : null}
+              {pending ? "Processing..." : "Run"}
+            </span>
+          </button>
+          {actions}
+        </div>
+      </form>
+    );
+  }),
+);
 
 function trimOrNull(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -176,6 +374,15 @@ function isAiResponse(v: unknown): v is AiResponse {
     return typeof r.client_name === "string" && typeof r.project_name === "string";
   if (r.action === "delete_project")
     return typeof r.client_name === "string" && typeof r.project_name === "string";
+  if (r.action === "add_mileage") {
+    if (typeof r.date !== "string") return false;
+    const tid = typeof r.template_id === "string" ? r.template_id.trim() : "";
+    if (tid) return true;
+    return (
+      typeof r.leg_distance_km === "number" &&
+      (r.trip_type === "one_way" || r.trip_type === "round_trip")
+    );
+  }
   return false;
 }
 
@@ -193,6 +400,11 @@ function normalizeIsoDate(input: string | null | undefined): string {
   if (s === "yesterday") {
     const y = new Date(today);
     y.setDate(y.getDate() - 1);
+    return toISO(y);
+  }
+  if (s === "tomorrow") {
+    const y = new Date(today);
+    y.setDate(y.getDate() + 1);
     return toISO(y);
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -234,12 +446,14 @@ export function AiCreateClientAssistant({
   canUseAi?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [lastSentAt, setLastSentAt] = useState<number>(0);
+  const [isRunning, setIsRunning] = useState(false);
   const [pending, startTransition] = useTransition();
+  const inputRef = useRef<AiInputHandle | null>(null);
+  const setInput = (next: string) => inputRef.current?.setValue(next);
 
   useEffect(() => {
     if (!success) return;
@@ -884,6 +1098,93 @@ export function AiCreateClientAssistant({
           ? `Client ${client.name} and all related data deleted`
           : `Client ${client.name} deleted`,
       );
+    } else if (aiPayload.action === "add_mileage") {
+      const limitsRes = await fetch("/api/subscription/limits");
+      const limits = (await limitsRes.json().catch(() => null)) as {
+        businessFeatures?: boolean;
+      } | null;
+      if (!limitsRes.ok || !limits?.businessFeatures) {
+        throw new Error(
+          "Mileage requires Business features (Basic or Pro). Upgrade your plan to log mileage.",
+        );
+      }
+
+      const dateIso = normalizeIsoDate(aiPayload.date);
+      const templateId = trimOrNull(aiPayload.template_id);
+
+      if (templateId) {
+        const { data: tmpl, error: tmplErr } = await supabase
+          .from("mileage_templates")
+          .select("trip_type,start_location,end_location,distance_km,notes,project_id")
+          .eq("id", templateId)
+          .eq("user_id", userId)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (tmplErr) throw new Error(tmplErr.message || "Template lookup failed.");
+        if (!tmpl) throw new Error("Mileage template not found.");
+
+        const tripType =
+          String((tmpl as { trip_type?: string }).trip_type ?? "one_way").toLowerCase() ===
+          "round_trip"
+            ? "round_trip"
+            : "one_way";
+        const storedKm =
+          Math.round(Number((tmpl as { distance_km?: unknown }).distance_km ?? 0) * 100) / 100;
+        const startLoc =
+          normalizeMileageLocationKey(
+            String((tmpl as { start_location?: string | null }).start_location ?? ""),
+          ) || "home";
+        const endRaw = (tmpl as { end_location?: string | null }).end_location;
+        const endLoc = endRaw
+          ? normalizeMileageLocationKey(String(endRaw)) || null
+          : null;
+
+        const { error: mErr } = await supabase.from("mileage").insert({
+          user_id: userId,
+          project_id: (tmpl as { project_id?: string | null }).project_id ?? null,
+          date: dateIso,
+          distance_km: storedKm,
+          trip_type: tripType,
+          start_location: startLoc,
+          end_location: endLoc,
+          notes: trimOrNull((tmpl as { notes?: string | null }).notes),
+        });
+        if (mErr) throw new Error(mErr.message || "Mileage insert failed.");
+        actionMessages.push(
+          `Mileage logged from template · ${storedKm} km (${dateIso})`,
+        );
+      } else {
+        const tripType =
+          aiPayload.trip_type === "round_trip" ? "round_trip" : "one_way";
+        const leg = Number(aiPayload.leg_distance_km ?? 0);
+        if (!Number.isFinite(leg) || leg <= 0) {
+          throw new Error("Invalid mileage distance");
+        }
+        const startLoc =
+          normalizeMileageLocationKey(trimOrNull(aiPayload.start_location) ?? "") ||
+            "home";
+        const endRaw = trimOrNull(aiPayload.end_location);
+        if (!endRaw) throw new Error("Mileage destination is required");
+        const endLoc = normalizeMileageLocationKey(endRaw);
+        if (!endLoc) throw new Error("Mileage destination is required");
+
+        const storedKm = mileageStoredDistanceKm(tripType, leg);
+
+        const { error: mErr } = await supabase.from("mileage").insert({
+          user_id: userId,
+          project_id: null,
+          date: dateIso,
+          distance_km: storedKm,
+          trip_type: tripType,
+          start_location: startLoc,
+          end_location: endLoc,
+          notes: null,
+        });
+        if (mErr) throw new Error(mErr.message || "Mileage insert failed.");
+        actionMessages.push(
+          `Mileage logged · ${startLoc} → ${endLoc} · ${storedKm} km (${dateIso})`,
+        );
+      }
     } else {
       const rawCompanyName = aiPayload.company_name.trim();
       if (!rawCompanyName) throw new Error("Company name is required");
@@ -950,42 +1251,32 @@ export function AiCreateClientAssistant({
     }
   }
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const message = input.trim();
+  function validateMessage(messageRaw: string): string | null {
+    const message = messageRaw.trim();
     if (!message) {
       setError("Please enter a request.");
-      return;
+      return null;
     }
     const words = countWords(message);
     if (words > MAX_WORDS) {
-      setError("Keep your command short and simple (max 40 words)");
-      return;
+      setError(`Keep your command short and simple (max ${MAX_WORDS} words)`);
+      return null;
     }
     const msSinceLast = Date.now() - lastSentAt;
     if (msSinceLast < LOCAL_COOLDOWN_MS) {
       const waitFor = Math.ceil((LOCAL_COOLDOWN_MS - msSinceLast) / 1000);
       setError(`Please wait ${waitFor}s before sending another request.`);
-      return;
+      return null;
     }
 
     setError(null);
     setSuccess(null);
-    startTransition(async () => {
-      try {
-        await handleCreateClientFlow(message);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Something went wrong.");
-      }
-    });
+    return message;
   }
-
-  const wordsNow = countWords(input);
-  const tooLong = wordsNow > MAX_WORDS;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[210]">
-      <div className="pointer-events-auto absolute bottom-20 right-5">
+      <div className="pointer-events-auto absolute bottom-5 right-5">
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -996,7 +1287,7 @@ export function AiCreateClientAssistant({
       </div>
 
       {success ? (
-        <div className="pointer-events-none fixed bottom-36 right-5 z-[212]">
+        <div className="pointer-events-none fixed bottom-24 right-5 z-[212]">
           <div className="rounded-lg border border-emerald-800/70 bg-emerald-950/90 px-3 py-2 text-sm text-emerald-200 shadow-lg">
             {success}
           </div>
@@ -1020,12 +1311,15 @@ export function AiCreateClientAssistant({
           >
             {!canUseAi ? (
               <>
-                <h2
-                  id="ai-create-client-title"
-                  className="text-base font-semibold text-zinc-100"
-                >
-                  AI assistant
-                </h2>
+                <div className="flex items-start justify-between gap-3">
+                  <h2
+                    id="ai-create-client-title"
+                    className="min-w-0 flex-1 text-base font-semibold text-zinc-100"
+                  >
+                    AI assistant
+                  </h2>
+                  <AiAssistantAskHint />
+                </div>
                 <p className="mt-3 text-sm leading-relaxed text-zinc-300">
                   The AI assistant is not included in the Free plan. Upgrade to{" "}
                   <span className="text-zinc-100">Basic</span> or{" "}
@@ -1042,14 +1336,17 @@ export function AiCreateClientAssistant({
               </>
             ) : (
               <>
-                <h2
-                  id="ai-create-client-title"
-                  className="text-base font-semibold text-zinc-100"
-                >
-                  AI assistant
-                </h2>
+                <div className="flex items-start justify-between gap-3">
+                  <h2
+                    id="ai-create-client-title"
+                    className="min-w-0 flex-1 text-base font-semibold text-zinc-100"
+                  >
+                    AI assistant
+                  </h2>
+                  <AiAssistantAskHint />
+                </div>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Supported: Create/update/Delete clients, Add/delete income, Create company, Create/update/delete projects
+                  Supported: Clients, income, projects, company — and mileage (Business plans) with natural language or your saved mileage templates
                 </p>
                 <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-900/40 p-2">
                   <p className="text-xs text-zinc-400">
@@ -1070,42 +1367,43 @@ export function AiCreateClientAssistant({
                   </div>
                 </div>
 
-                <form onSubmit={onSubmit} className="mt-3 space-y-3">
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    required
-                    rows={4}
-                    placeholder="Type a command..."
-                    disabled={pending}
-                    className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-indigo-500 disabled:opacity-60"
-                  />
+                <AiInput
+                  ref={inputRef}
+                  pending={pending || isRunning}
+                  maxWords={MAX_WORDS}
+                  onSubmit={(message) => {
+                    if (isRunning) return;
+                    const validated = validateMessage(message);
+                    if (!validated) return;
+                    setIsRunning(true);
+                    startTransition(() => {
+                      void handleCreateClientFlow(validated)
+                        .catch((err) => {
+                          setError(err instanceof Error ? err.message : "Something went wrong.");
+                        })
+                        .finally(() => {
+                          setIsRunning(false);
+                        });
+                    });
+                  }}
+                  actions={
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      disabled={isRunning}
+                      className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900 disabled:opacity-50"
+                    >
+                      Close
+                    </button>
+                  }
+                >
                   <p className="text-xs text-zinc-500">
                     {"Use simple commands like: 'add client {name}'"}
-                  </p>
-                  <p className="text-xs text-zinc-500">
-                    {wordsNow}/{MAX_WORDS} words
                   </p>
                   {error ? (
                     <p className="whitespace-pre-line text-sm text-rose-400">{error}</p>
                   ) : null}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="submit"
-                      disabled={pending || tooLong}
-                      className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-                    >
-                      {pending ? "Processing..." : "Run"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={closeModal}
-                      className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </form>
+                </AiInput>
               </>
             )}
           </div>

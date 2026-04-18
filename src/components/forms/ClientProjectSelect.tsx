@@ -56,7 +56,7 @@ export function ClientProjectSelect({
         </select>
       </label>
 
-      <label className="min-w-0 space-y-1">
+      <label className="min-w-0 space-y-1 sm:col-span-2">
         <span className="text-sm text-zinc-300">{projectLabel}</span>
         <select
           name="project_id"

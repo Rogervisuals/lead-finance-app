@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerActionClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatCurrency, formatISODateTime } from "@/lib/finance/format";
 import { CurrencyWithUsd } from "@/components/display/CurrencyWithUsd";
 import { getInvoiceLogoPublicUrl } from "@/lib/supabase/invoice-logo";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 import { canUseInvoiceFeatures } from "@/lib/permissions";
 import { getUserPlanWithClient } from "@/lib/subscription/plan";
+import { EditLabel, DeleteLabel } from "@/components/icons/LabeledIcons";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
 import { InvoicePdfDownloadButton } from "@/components/invoices/InvoicePdfDownloadButton";
 import {
   createInvoiceAction,
@@ -18,6 +21,37 @@ import {
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 25;
+
+async function deleteHourAction(formData: FormData) {
+  "use server";
+  const supabase = createSupabaseServerActionClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const returnTo = String(formData.get("return_to") ?? "/projects").trim() || "/projects";
+  const hourId = String(formData.get("hour_id") ?? "").trim();
+  const projectId = String(formData.get("project_id") ?? "").trim();
+  if (!hourId || !projectId) redirect(returnTo);
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!project) redirect(returnTo);
+
+  await supabase
+    .from("hours")
+    .delete()
+    .eq("id", hourId)
+    .eq("user_id", user.id)
+    .eq("project_id", projectId);
+
+  redirect(returnTo);
+}
 
 function sumIncomeConverted(
   rows: Array<{ amount_converted?: string | number | null | undefined }>
@@ -49,6 +83,8 @@ export default async function ProjectDetailPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const ui = getUi(getServerLocale());
 
   const projectId = params.id;
   const pageRaw = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
@@ -94,7 +130,7 @@ export default async function ProjectDetailPage({
   const { data: businessRow } = await supabase
     .from("user_settings")
     .select(
-      "business_name,full_name,email,phone,website,iban,vat_number,kvk_number,address,invoice_logo_path"
+      "business_name,full_name,email,phone,website,iban,bic,vat_number,kvk_number,address,invoice_logo_path"
     )
     .eq("user_id", user.id)
     .maybeSingle();
@@ -329,6 +365,7 @@ export default async function ProjectDetailPage({
                                 phone: (businessRow as any)?.phone ?? null,
                                 website: (businessRow as any)?.website ?? null,
                                 iban: (businessRow as any)?.iban ?? null,
+                                bic: (businessRow as any)?.bic ?? null,
                                 vat_number: (businessRow as any)?.vat_number ?? null,
                                 kvk_number: (businessRow as any)?.kvk_number ?? null,
                                 address: (businessRow as any)?.address ?? null,
@@ -345,19 +382,17 @@ export default async function ProjectDetailPage({
                               >
                                 Mark {status === "paid" ? "open" : "paid"}
                               </button>
-                            </form>
+                            </form> 
                             <form action={deleteInvoiceAction}>
-                              <input type="hidden" name="invoice_id" value={inv.id} />
-                              <input type="hidden" name="return_to" value={baseUrl} />
-                              <button
-                                type="submit"
-                                className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-rose-200 hover:bg-zinc-950/40"
-                                aria-label="Delete invoice"
-                                title="Delete invoice"
-                              >
-                                🗑
-                              </button>
-                            </form>
+                            <input type="hidden" name="invoice_id" value={inv.id} />
+                            <input type="hidden" name="return_to" value={baseUrl} />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
+                          >
+                            <DeleteLabel>{ui.common.delete}</DeleteLabel>
+                          </button>
+                        </form>
                           </div>
                         </td>
                       </tr>
@@ -390,9 +425,19 @@ export default async function ProjectDetailPage({
 
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-semibold text-zinc-200">Logged hours</h2>
+          <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-start">
+            <h2 className="text-sm font-semibold text-zinc-200">Logged hours</h2>
+            <Link
+              href={`/hours/add?project=${encodeURIComponent(projectId)}`}
+              className="inline-flex h-9 min-w-9 shrink-0 items-center justify-center rounded-md border border-zinc-700 bg-zinc-950/50 text-base font-medium leading-none text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-900"
+              aria-label={ui.hours.addHoursLink}
+              title={ui.hours.addHoursLink}
+            >
+              +
+            </Link>
+          </div>
           {totalHourEntries > 0 ? (
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-500 sm:ml-auto">
               Showing {currentPage * PAGE_SIZE - PAGE_SIZE + 1}–
               {Math.min(currentPage * PAGE_SIZE, totalHourEntries)} of {totalHourEntries}
             </p>
@@ -409,6 +454,7 @@ export default async function ProjectDetailPage({
                     <th className="py-2 pr-2">End</th>
                     <th className="w-24 py-2 text-right">Hours</th>
                     <th className="min-w-0 py-2 pl-4 sm:min-w-[8rem]">Notes</th>
+                    <th className="py-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
@@ -426,6 +472,29 @@ export default async function ProjectDetailPage({
                       <td className="py-2 pl-4 text-zinc-500">
                         {row.notes?.trim() ? row.notes : "—"}
                       </td>
+                      <td className="py-2 text-right">
+                        <div className="inline-flex justify-end gap-2">
+                          <Link
+                            href={`/hours/${row.id}/edit`}
+                            className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
+                            aria-label="Edit hour entry"
+                            title="Edit"
+                          >
+                            <EditLabel>{ui.common.edit}</EditLabel>
+                          </Link>
+                          <form action={deleteHourAction}>
+                          <input type="hidden" name="hour_id" value={row.id} />
+                            <input type="hidden" name="project_id" value={projectId} />
+                            <input type="hidden" name="return_to" value={baseUrl} />
+                          <button
+                            type="submit"
+                            className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
+                          >
+                            <DeleteLabel>{ui.common.delete}</DeleteLabel>
+                          </button>
+                        </form>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -440,6 +509,7 @@ export default async function ProjectDetailPage({
                 <div className="flex gap-2">
                   {currentPage > 1 ? (
                     <Link
+                      scroll={false}
                       href={queryFor(currentPage - 1)}
                       className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
                     >
@@ -452,6 +522,7 @@ export default async function ProjectDetailPage({
                   )}
                   {currentPage < totalPages ? (
                     <Link
+                      scroll={false}
                       href={queryFor(currentPage + 1)}
                       className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
                     >
@@ -478,7 +549,7 @@ export default async function ProjectDetailPage({
           href={`/projects/${projectId}/edit`}
           className="inline-flex rounded-md border border-zinc-800 bg-zinc-950/20 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-950/40"
         >
-          Edit project
+          <EditLabel>{ui.edits.editProject}</EditLabel>
         </Link>
       </div>
     </div>

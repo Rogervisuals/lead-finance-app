@@ -1,3 +1,4 @@
+import { DeleteLabel } from "@/components/icons/LabeledIcons";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -142,15 +143,6 @@ export default async function EditHoursPage({
           </div>
         </form>
 
-        <form action={deleteHourAction} className="mt-4">
-          <input type="hidden" name="id" value={hour.id} />
-          <button
-            type="submit"
-            className="rounded-md border border-zinc-800 bg-zinc-950/20 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-950/40"
-          >
-            Delete hours
-          </button>
-        </form>
       </section>
     </div>
   );

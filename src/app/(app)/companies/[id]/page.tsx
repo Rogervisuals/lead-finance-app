@@ -273,7 +273,7 @@ export default async function CompanyDetailPage({
 
         <div className="rounded-xl border border-amber-900/40 bg-zinc-900/20 p-4">
           <div className="text-sm text-zinc-400">Total hours</div>
-          <div className="mt-2 text-2xl font-semibold text-amber-200">
+          <div className="mt-2 text-2xl font-semibold text-amber-300">
             {companyHours.toFixed(2)}
           </div>
         </div>

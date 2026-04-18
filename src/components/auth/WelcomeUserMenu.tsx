@@ -10,11 +10,13 @@ export function WelcomeUserMenu({
   displayName,
   serverTheme,
   showAdminFeedback = false,
+  showSendFeedback = true,
   ui,
 }: {
   displayName: string;
   serverTheme: ThemeMode;
   showAdminFeedback?: boolean;
+  showSendFeedback?: boolean;
   ui: FullUi;
 }) {
   return (
@@ -41,6 +43,14 @@ export function WelcomeUserMenu({
           >
             {ui.nav.settings}
           </Link>
+          {showSendFeedback ? (
+            <Link
+              href="/feedback/submit"
+              className="block rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-900"
+            >
+              {ui.nav.sendFeedback}
+            </Link>
+          ) : null}
 
           <div className="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900">
             <span className="text-zinc-300">{ui.nav.theme}</span>
@@ -52,7 +62,7 @@ export function WelcomeUserMenu({
               href="/feedback"
               className="block rounded-md px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-900"
             >
-              {ui.nav.feedback}
+              {ui.nav.feedbackInbox}
             </Link>
           ) : null}
           <SignOutButton

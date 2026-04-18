@@ -9,6 +9,7 @@ import {
   createClientAction,
   deleteClientAction,
 } from "../server-actions/clients";
+import { DeleteLabel, EditLabel } from "@/components/icons/LabeledIcons";
 import { getServerLocale } from "@/lib/i18n/server";
 import { getUi } from "@/lib/i18n/get-ui";
 import { canCreateClient, hasAccess } from "@/lib/permissions";
@@ -212,7 +213,7 @@ export default async function ClientsPage({
                           href={`/clients/${c.id}/edit`}
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          {ui.common.edit}
+                          <EditLabel>{ui.common.edit}</EditLabel>
                         </Link>
                         <form action={deleteClientAction}>
                           <input type="hidden" name="id" value={c.id} />
@@ -220,7 +221,7 @@ export default async function ClientsPage({
                             type="submit"
                             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                           >
-                            {ui.common.delete}
+                            <DeleteLabel>{ui.common.delete}</DeleteLabel>
                           </button>
                         </form>
                       </div>

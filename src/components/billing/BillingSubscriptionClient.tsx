@@ -14,13 +14,20 @@ type BillingCopy = {
   projects: string;
   clients: string;
   unlimited: string;
+  billingAiRequests: string;
+  billingFeatureBusiness: string;
+  billingFeatureRateInsights: string;
+  billingFeatureInvoices: string;
+  billingFeatureTimer: string;
+  billingFeatureIncluded: string;
+  billingFeatureNotIncluded: string;
+  billingFeatureInvoicesProBadge: string;
   upgradeHeading: string;
   manageHeading: string;
   manageBody: string;
   openPortal: string;
   portalOpening: string;
   portalFailed: string;
-  noCustomer: string;
   cancelledLabel: string;
   cancelledBody: string;
 };
@@ -34,6 +41,31 @@ function formatCap(n: number | null, unlimitedLabel: string): string {
 function planLabel(plan: PlanId): string {
   return plan.charAt(0).toUpperCase() + plan.slice(1);
 }
+
+function FeatureMark({
+  enabled,
+  includedLabel,
+  notIncludedLabel,
+}: {
+  enabled: boolean;
+  includedLabel: string;
+  notIncludedLabel: string;
+}) {
+  return (
+    <span className="flex items-center justify-end gap-2">
+      <span
+        className={`text-lg leading-none ${enabled ? "text-emerald-400" : "text-zinc-600"}`}
+        aria-hidden
+      >
+        {enabled ? "✓" : "✗"}
+      </span>
+      <span className="sr-only">{enabled ? includedLabel : notIncludedLabel}</span>
+    </span>
+  );
+}
+
+const limitRowClass =
+  "flex justify-between gap-4 rounded-md border border-zinc-800/80 bg-zinc-950/20 px-3 py-2 sm:col-span-2";
 
 export function BillingSubscriptionClient({
   plan,
@@ -70,7 +102,9 @@ export function BillingSubscriptionClient({
     }
   }
 
-  const showPortal = plan !== "free" || hasStripeCustomerId;
+  /** Portal only works with a Stripe customer; hide for free tier or paid rows missing linkage. */
+  const showManageSection =
+    (plan === "basic" || plan === "pro") && hasStripeCustomerId;
 
   return (
     <div className="space-y-10">
@@ -108,6 +142,74 @@ export function BillingSubscriptionClient({
               {limits.clientCount} / {formatCap(limits.maxClients, copy.unlimited)}
             </dd>
           </div>
+
+          <div className="flex justify-between gap-4 rounded-md border border-zinc-800/80 bg-zinc-950/20 px-3 py-2">
+            <dt className="text-zinc-400">{copy.billingAiRequests}</dt>
+            <dd className="text-right">
+              {limits.aiDailyCap === 0 ? (
+                <FeatureMark
+                  enabled={false}
+                  includedLabel={copy.billingFeatureIncluded}
+                  notIncludedLabel={copy.billingFeatureNotIncluded}
+                />
+              ) : (
+                <span className="inline-flex items-center justify-end gap-2">
+                  <span className="tabular-nums text-zinc-200">
+                    {limits.aiUsedToday} /{" "}
+                    {Number.isFinite(limits.aiDailyCap)
+                      ? limits.aiDailyCap
+                      : copy.unlimited}
+                  </span>
+                  <span className="sr-only">{copy.billingFeatureIncluded}</span>
+                </span>
+              )}
+            </dd>
+          </div>
+
+          <div className="flex justify-between gap-4 rounded-md border border-zinc-800/80 bg-zinc-950/20 px-3 py-2">
+            <dt className="text-zinc-400">{copy.billingFeatureBusiness}</dt>
+            <dd>
+              <FeatureMark
+                enabled={limits.businessFeatures}
+                includedLabel={copy.billingFeatureIncluded}
+                notIncludedLabel={copy.billingFeatureNotIncluded}
+              />
+            </dd>
+          </div>
+
+          <div className="flex justify-between gap-4 rounded-md border border-zinc-800/80 bg-zinc-950/20 px-3 py-2">
+            <dt className="text-zinc-400">{copy.billingFeatureRateInsights}</dt>
+            <dd>
+              <FeatureMark
+                enabled={limits.rateInsights}
+                includedLabel={copy.billingFeatureIncluded}
+                notIncludedLabel={copy.billingFeatureNotIncluded}
+              />
+            </dd>
+          </div>
+
+          <div className="flex justify-between gap-4 rounded-md border border-zinc-800/80 bg-zinc-950/20 px-3 py-2">
+            <dt className="text-zinc-400">{copy.billingFeatureInvoices}</dt>
+            <dd className="flex flex-col items-end gap-0.5">
+
+              <FeatureMark
+                enabled={limits.invoiceFeatures}
+                includedLabel={copy.billingFeatureIncluded}
+                notIncludedLabel={copy.billingFeatureNotIncluded}
+              />
+            </dd>
+          </div>
+
+          <div className="flex justify-between gap-4 rounded-md border border-zinc-800/80 bg-zinc-950/20 px-3 py-2">
+            <dt className="text-zinc-400">{copy.billingFeatureTimer}</dt>
+            <dd>
+              <FeatureMark
+                enabled={limits.activeTimer}
+                includedLabel={copy.billingFeatureIncluded}
+                notIncludedLabel={copy.billingFeatureNotIncluded}
+              />
+            </dd>
+          </div>
         </dl>
       </section>
 
@@ -127,10 +229,10 @@ export function BillingSubscriptionClient({
         </div>
       </section>
 
-      <section className="rounded-lg border border-zinc-800 bg-zinc-950/25 px-4 py-4 sm:px-5">
-        <h2 className="text-base font-semibold text-zinc-100">{copy.manageHeading}</h2>
-        <p className="mt-2 text-sm leading-relaxed text-zinc-500">{copy.manageBody}</p>
-        {showPortal ? (
+      {showManageSection ? (
+        <section className="rounded-lg border border-zinc-800 bg-zinc-950/25 px-4 py-4 sm:px-5">
+          <h2 className="text-base font-semibold text-zinc-100">{copy.manageHeading}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-zinc-500">{copy.manageBody}</p>
           <div className="mt-4">
             <button
               type="button"
@@ -146,10 +248,8 @@ export function BillingSubscriptionClient({
               </p>
             ) : null}
           </div>
-        ) : (
-          <p className="mt-4 text-sm text-zinc-500">{copy.noCustomer}</p>
-        )}
-      </section>
+        </section>
+      ) : null}
     </div>
   );
 }

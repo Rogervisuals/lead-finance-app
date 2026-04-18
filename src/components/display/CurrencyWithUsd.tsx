@@ -17,9 +17,14 @@ export function CurrencyWithUsd({
   primaryClassName?: string;
   usdClassName?: string;
 }) {
+  const primary =
+    primaryClassName != null && primaryClassName !== ""
+      ? `${primaryClassName} block min-w-0 max-w-full break-words`
+      : "block min-w-0 max-w-full break-words";
+
   return (
-    <div className={className}>
-      <span className={primaryClassName}>{formatCurrency(amount, currency)}</span>
+    <div className={className ? `min-w-0 max-w-full ${className}` : "min-w-0 max-w-full"}>
+      <span className={primary}>{formatCurrency(amount, currency)}</span>
       <FxSubline amount={amount} currency={currency} className={usdClassName ?? defaultUsdLine} />
     </div>
   );
@@ -42,16 +47,26 @@ export function HourlyRateWithUsd({
 }) {
   if (rate == null) {
     return (
-      <div className={`${align === "right" ? "text-right" : ""} ${className ?? ""}`}>
+      <div
+        className={`${align === "right" ? "text-right" : ""} min-w-0 max-w-full ${className ?? ""}`}
+      >
         <span className={primaryClassName}>—</span>
       </div>
     );
   }
   return (
     <div
-      className={`${align === "right" ? "text-right" : ""} ${className ?? ""}`}
+      className={`${align === "right" ? "text-right" : ""} min-w-0 max-w-full ${className ?? ""}`}
     >
-      <div className={primaryClassName}>{formatHourlyRate(rate, currency)}</div>
+      <div
+        className={
+          primaryClassName
+            ? `${primaryClassName} min-w-0 max-w-full break-words`
+            : "min-w-0 max-w-full break-words"
+        }
+      >
+        {formatHourlyRate(rate, currency)}
+      </div>
       <FxSubline amount={rate} currency={currency} className={usdClassName ?? defaultUsdLine} />
     </div>
   );

@@ -17,6 +17,8 @@ export const permissions = {
     /** Best/worst client, avg hourly rate on dashboard; hourly rates on client page. */
     rateInsights: false,
     invoiceFeatures: false,
+    /** Dashboard “Export Data (PDF)” tax report download. */
+    dataExportPdf: false,
     /** Header time tracker (start/stop); Free shows upgrade prompt on click. */
     activeTimer: false,
   },
@@ -27,6 +29,7 @@ export const permissions = {
     businessFeatures: true,
     rateInsights: true,
     invoiceFeatures: false,
+    dataExportPdf: false,
     activeTimer: true,
   },
   pro: {
@@ -37,6 +40,7 @@ export const permissions = {
     rateInsights: true,
     /** Create/manage invoices, PDFs, finance invoices hub. */
     invoiceFeatures: true,
+    dataExportPdf: true,
     activeTimer: true,
   },
 } as const;
@@ -93,6 +97,10 @@ export function canViewRateInsights(plan: string): boolean {
 
 export function canUseInvoiceFeatures(plan: string): boolean {
   return hasAccess(plan, "invoiceFeatures") === true;
+}
+
+export function canExportDataPdf(plan: string): boolean {
+  return hasAccess(plan, "dataExportPdf") === true;
 }
 
 export function canUseActiveTimer(plan: string): boolean {

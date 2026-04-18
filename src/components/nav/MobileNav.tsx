@@ -15,11 +15,13 @@ export function MobileNav({
   displayName,
   serverTheme,
   showAdminFeedback = false,
+  showSendFeedback = true,
   ui,
 }: {
   displayName: string;
   serverTheme: ThemeMode;
   showAdminFeedback?: boolean;
+  showSendFeedback?: boolean;
   ui: FullUi;
 }) {
   const [open, setOpen] = useState(false);
@@ -67,24 +69,28 @@ export function MobileNav({
             className="cursor-default select-none border-b border-zinc-800/90 px-1 pb-3 pt-0.5"
             role="presentation"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-              {ui.nav.welcome}
-            </p>
-            <p className="mt-1.5 truncate text-[15px] font-medium leading-snug text-zinc-100">
-              {displayName}
-            </p>
-            <div className="mt-2">
-              <MobileItem href="/profile">{ui.nav.profile}</MobileItem>
-              <MobileItem href="/settings">{ui.nav.settings}</MobileItem>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                  {ui.nav.welcome}
+                </p>
+                <p className="mt-1.5 truncate text-[15px] font-medium leading-snug text-zinc-100">
+                  {displayName}
+                </p>
+              </div>
+              <div className="shrink-0">
+                <ThemeSwitch serverTheme={serverTheme} />
+              </div>
             </div>
-
-            <div className="mt-2 flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950/30 px-2 py-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                {ui.nav.theme}
-              </span>
-              <ThemeSwitch serverTheme={serverTheme} />
+            <div className="mt-2 space-y-2">
+              <MobileDropdown title={ui.nav.profileAndSettings} variant="user">
+                <MobileItem href="/profile">{ui.nav.profile}</MobileItem>
+                <MobileItem href="/settings">{ui.nav.settings}</MobileItem>
+              </MobileDropdown>
+              {showSendFeedback ? (
+                <MobileItem href="/feedback/submit">{ui.nav.sendFeedback}</MobileItem>
+              ) : null}
             </div>
-
           </div>
 
           <div className="grid gap-1 text-sm">
@@ -107,7 +113,7 @@ export function MobileNav({
 
           {showAdminFeedback ? (
             <div className="grid gap-1 text-sm">
-              <MobileItem href="/feedback">{ui.nav.feedback}</MobileItem>
+              <MobileItem href="/feedback">{ui.nav.feedbackInbox}</MobileItem>
             </div>
           ) : null}
 
@@ -126,15 +132,23 @@ export function MobileNav({
 function MobileDropdown({
   title,
   children,
+  variant = "section",
 }: {
   title: string;
   children: ReactNode;
+  /** `user`: sentence-case label under the welcome block; `section`: uppercase nav sections. */
+  variant?: "section" | "user";
 }) {
+  const summaryClass =
+    variant === "user"
+      ? "flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-zinc-400"
+      : "flex cursor-pointer list-none items-center justify-between text-xs font-medium uppercase tracking-wide text-zinc-500";
+
   return (
     <details className="rounded-md border border-zinc-800 bg-zinc-950/30 p-2">
-      <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium uppercase tracking-wide text-zinc-500">
+      <summary className={summaryClass}>
         {title}
-        <span className="text-zinc-600">▾</span>
+        <span className="shrink-0 text-zinc-600">▾</span>
       </summary>
       <div className="mt-2 grid gap-1 text-sm">{children}</div>
     </details>

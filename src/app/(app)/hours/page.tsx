@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatISODateTime } from "@/lib/finance/format";
 import { deleteHourAction } from "../server-actions/hours";
+import { DeleteLabel, EditLabel, } from "@/components/icons/LabeledIcons";
 import { getServerLocale } from "@/lib/i18n/server";
 import { getUi } from "@/lib/i18n/get-ui";
 
@@ -203,7 +204,7 @@ export default async function HoursPage({
                               href={`/hours/${r.id}/edit`}
                               className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                             >
-                              Edit
+                              <EditLabel>{ui.common.edit}</EditLabel>
                             </Link>
                             <form action={deleteHourAction}>
                               <input type="hidden" name="id" value={r.id} />
@@ -211,8 +212,8 @@ export default async function HoursPage({
                                 type="submit"
                                 className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                               >
-                                Delete
-                              </button>
+                                <DeleteLabel>{ui.common.delete}</DeleteLabel>
+                            </button>
                             </form>
                           </div>
                         </td>
@@ -230,6 +231,7 @@ export default async function HoursPage({
                 <div className="flex gap-2">
                   {currentPage > 1 ? (
                     <Link
+                      scroll={false}
                       href={logPageUrl(currentPage - 1)}
                       className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
                     >
@@ -242,6 +244,7 @@ export default async function HoursPage({
                   )}
                   {currentPage < totalPages ? (
                     <Link
+                      scroll={false}
                       href={logPageUrl(currentPage + 1)}
                       className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
                     >

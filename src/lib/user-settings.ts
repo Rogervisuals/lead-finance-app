@@ -24,6 +24,7 @@ export type UserSettingsBusinessFields = {
   phone: string | null;
   website: string | null;
   iban: string | null;
+  bic: string | null;
   vat_number: string | null;
   kvk_number: string | null;
   address: string | null;
@@ -32,7 +33,7 @@ export type UserSettingsBusinessFields = {
 
 const SETTINGS_PAGE_SELECT =
   "vat_enabled,vat_percentage,tax_percentage,base_currency,comparison_currency," +
-  "business_name,full_name,email,phone,website,iban,vat_number,kvk_number,address,invoice_logo_path";
+  "business_name,full_name,email,phone,website,iban,bic,vat_number,kvk_number,address,invoice_logo_path";
 
 function sanitizePercentage(value: unknown, fallback: number) {
   const n = Number(value);
@@ -147,6 +148,7 @@ export async function getOrCreateUserSettingsForSettingsPage(userId: string): Pr
       phone: null,
       website: null,
       iban: null,
+      bic: null,
       vat_number: null,
       kvk_number: null,
       address: null,
@@ -183,6 +185,7 @@ export async function getOrCreateUserSettingsForSettingsPage(userId: string): Pr
     phone: r.phone != null ? String(r.phone) : null,
     website: r.website != null ? String(r.website) : null,
     iban: r.iban != null ? String(r.iban) : null,
+    bic: r.bic != null ? String(r.bic) : null,
     vat_number: r.vat_number != null ? String(r.vat_number) : null,
     kvk_number: r.kvk_number != null ? String(r.kvk_number) : null,
     address: r.address != null ? String(r.address) : null,
@@ -206,6 +209,7 @@ export async function setVatEnabled(userId: string, enabled: boolean) {
       vat_enabled: enabled,
       vat_percentage: DEFAULT_VAT_PERCENTAGE,
       tax_percentage: DEFAULT_TAX_PERCENTAGE,
+      financial_settings_saved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id" }
@@ -237,6 +241,7 @@ export async function setUserFinancialSettings(
         settings.comparison_currency,
         DEFAULT_COMPARISON_CURRENCY
       ),
+      financial_settings_saved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id" }

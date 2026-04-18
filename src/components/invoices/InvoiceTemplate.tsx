@@ -65,6 +65,7 @@ export function InvoiceTemplate({
     phone?: string | null;
     website?: string | null;
     iban?: string | null;
+    bic?: string | null;
     vat_number?: string | null;
     kvk_number?: string | null;
     address?: string | null;
@@ -239,6 +240,11 @@ export function InvoiceTemplate({
             {showLine(business.iban) ? (
               <div style={{ marginTop: 3, color: "#374151" }}>
                 <b>IBAN:  </b><span style={{ color: "#111827" }}>{business.iban}</span>
+              </div>
+            ) : null}
+            {showLine(business.bic) ? (
+              <div style={{ marginTop: 3, color: "#374151" }}>
+                <b>BIC:  </b><span style={{ color: "#111827" }}>{business.bic}</span>
               </div>
             ) : null}
             {business.vat_number || business.kvk_number ? (

@@ -84,6 +84,18 @@ type AiDeleteProjectResponse = {
   project_name: string;
 };
 
+type AiAddMileageResponse = {
+  action: "add_mileage";
+  date: string;
+  /** When set, use this saved mileage template (id from the list in the system prompt). */
+  template_id: string | null;
+  trip_type: "one_way" | "round_trip" | null;
+  start_location: string | null;
+  end_location: string | null;
+  /** One leg in km (same as the mileage form): round_trip = one-way distance; one_way = full trip. */
+  leg_distance_km: number | null;
+};
+
 type AiActionResponse =
   | AiCreateClientResponse
   | AiUpdateClientResponse
@@ -94,9 +106,10 @@ type AiActionResponse =
   | AiCreateClientsResponse
   | AiCreateProjectResponse
   | AiUpdateProjectStatusResponse
-  | AiDeleteProjectResponse;
+  | AiDeleteProjectResponse
+  | AiAddMileageResponse;
 
-const MAX_WORDS = 40;
+const MAX_WORDS = 45;
 const COOLDOWN_SECONDS = 3;
 
 type UsageRow = {
@@ -116,7 +129,7 @@ function trimOrNull(v: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function normalizeIncomeDate(input: string | null): string {
+function normalizeRelativeDate(input: string | null): string {
   const today = new Date();
   const toISO = (d: Date) => {
     const y = d.getFullYear();
@@ -132,7 +145,11 @@ function normalizeIncomeDate(input: string | null): string {
     y.setDate(y.getDate() - 1);
     return toISO(y);
   }
-  // Keep explicit YYYY-MM-DD style dates as-is if valid.
+  if (s === "tomorrow") {
+    const y = new Date(today);
+    y.setDate(y.getDate() + 1);
+    return toISO(y);
+  }
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   return toISO(today);
 }
@@ -173,7 +190,7 @@ function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | 
     const currency = (currencyRaw ?? "EUR").toUpperCase();
     const projectName = trimOrNull(parsed.project_name);
     const description = trimOrNull(parsed.description);
-    const date = normalizeIncomeDate(trimOrNull(parsed.date));
+    const date = normalizeRelativeDate(trimOrNull(parsed.date));
     return {
       action: "add_income",
       client_name: clientName,
@@ -195,7 +212,7 @@ function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | 
           ? parsed.amount
           : Number(parsed.amount ?? NaN);
     if (amount != null && (!Number.isFinite(amount) || amount <= 0)) return null;
-    const date = normalizeIncomeDate(trimOrNull(parsed.date));
+    const date = normalizeRelativeDate(trimOrNull(parsed.date));
     return {
       action: "delete_income",
       client_name: clientName,
@@ -248,9 +265,9 @@ function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | 
     const projectName = trimOrNull(parsed.project_name);
     if (!clientName || !projectName) return null;
     const status = (trimOrNull(parsed.status) ?? "active").toLowerCase();
-    const startDate = normalizeIncomeDate(trimOrNull(parsed.start_date));
+    const startDate = normalizeRelativeDate(trimOrNull(parsed.start_date));
     const endDate = trimOrNull(parsed.end_date)
-      ? normalizeIncomeDate(trimOrNull(parsed.end_date))
+      ? normalizeRelativeDate(trimOrNull(parsed.end_date))
       : null;
     return {
       action: "create_project",
@@ -266,7 +283,7 @@ function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | 
     const projectName = trimOrNull(parsed.project_name);
     if (!clientName || !projectName) return null;
     const status = (trimOrNull(parsed.status) ?? "finished").toLowerCase();
-    const endDate = normalizeIncomeDate(trimOrNull(parsed.end_date));
+    const endDate = normalizeRelativeDate(trimOrNull(parsed.end_date));
     return {
       action: "update_project_status",
       client_name: clientName,
@@ -283,6 +300,47 @@ function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | 
       action: "delete_project",
       client_name: clientName,
       project_name: projectName,
+    };
+  }
+  if (parsed.action === "add_mileage") {
+    const date = normalizeRelativeDate(trimOrNull(parsed.date));
+    const templateId = trimOrNull(parsed.template_id);
+    if (templateId) {
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          templateId,
+        )
+      ) {
+        return null;
+      }
+      return {
+        action: "add_mileage",
+        date,
+        template_id: templateId,
+        trip_type: null,
+        start_location: null,
+        end_location: null,
+        leg_distance_km: null,
+      };
+    }
+    const tripRaw = (trimOrNull(parsed.trip_type) ?? "one_way").toLowerCase();
+    const trip_type: "one_way" | "round_trip" =
+      tripRaw === "round_trip" ? "round_trip" : "one_way";
+    const leg =
+      typeof parsed.leg_distance_km === "number"
+        ? parsed.leg_distance_km
+        : Number(parsed.leg_distance_km ?? NaN);
+    if (!Number.isFinite(leg) || leg <= 0) return null;
+    const end_location = trimOrNull(parsed.end_location);
+    if (!end_location) return null;
+    return {
+      action: "add_mileage",
+      date,
+      template_id: null,
+      trip_type,
+      start_location: trimOrNull(parsed.start_location),
+      end_location,
+      leg_distance_km: leg,
     };
   }
   return null;
@@ -458,6 +516,47 @@ export async function POST(req: Request) {
     );
   }
 
+  const { data: mileageTemplateRows } = await supabase
+    .from("mileage_templates")
+    .select("id,trip_type,start_location,end_location,distance_km,notes")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  const mileageTemplatesPayload = JSON.stringify(
+    (mileageTemplateRows ?? []).map((t) => ({
+      id: t.id,
+      start_location: (t as { start_location?: string | null }).start_location ?? "home",
+      end_location: (t as { end_location?: string | null }).end_location ?? null,
+      trip_type: String((t as { trip_type?: string | null }).trip_type ?? "one_way"),
+      distance_km_stored: Number((t as { distance_km?: unknown }).distance_km ?? 0),
+      notes: (t as { notes?: string | null }).notes ?? null,
+    })),
+  );
+
+  const mileagePromptAppend = `
+
+ADD MILEAGE:
+{
+  "action": "add_mileage",
+  "date": "today" | "yesterday" | "tomorrow" | "YYYY-MM-DD",
+  "template_id": null | "<uuid from user mileage templates below>",
+  "trip_type": "one_way" | "round_trip" | null,
+  "start_location": string | null,
+  "end_location": string | null,
+  "leg_distance_km": number | null
+}
+
+Mileage rules:
+- When template_id is set: only date + template_id are required (other fields may be null). Use when the user clearly refers to a saved route (e.g. "I went to sandro today" matches a template whose end_location is sandro).
+- Free-form (template_id null): require leg_distance_km, end_location, trip_type. leg_distance_km is always the ONE-WAY / single-leg distance in km (same as the mileage form field). If the user says "X km one way" and also round trip / "and back" / "return", use trip_type "round_trip" and leg_distance_km = X (stored total km = 2*X). One-way trip without return: trip_type "one_way", leg_distance_km = full trip km.
+- Parse routes: "from A to B", "A to B", "went from A to B": start_location A, end_location B. "huis"/"home" => you may output "home" for start_location.
+- Similar phrasing should yield the same JSON fields.
+
+User mileage templates (authoritative ids for template_id):
+${mileageTemplatesPayload}
+`;
+
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 
   const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -474,7 +573,8 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            'You convert user input into JSON actions.\n\nAvailable actions:\n- create_client\n- create_clients\n- update_client\n- add_income\n- delete_income\n- delete_client\n- create_company\n- create_project\n- update_project_status\n- delete_project\n\n---\n\nReturn ONLY JSON in this format:\n{\n  "actions": [\n    { "action": "..." }\n  ]\n}\n\nEach item in actions[] must match one of these shapes:\n\nCREATE:\n{\n  "action": "create_client",\n  "name": "Client Name",\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE MULTIPLE CLIENTS WITH COMPANY:\n{\n  "action": "create_clients",\n  "clients": [\n    {\n      "name": "required",\n      "email": null,\n      "notes": null\n    }\n  ],\n  "company_name": "optional"\n}\n\nUPDATE:\n{\n  "action": "update_client",\n  "search_name": "existing client name",\n  "new_name": null,\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE PROJECT:\n{\n  "action": "create_project",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "active",\n  "start_date": "today",\n  "end_date": null\n}\n\nUPDATE PROJECT STATUS:\n{\n  "action": "update_project_status",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "finished",\n  "end_date": "today"\n}\n\nDELETE PROJECT:\n{\n  "action": "delete_project",\n  "client_name": "required",\n  "project_name": "required"\n}\n\nADD INCOME:\n{\n  "action": "add_income",\n  "client_name": "required",\n  "project_name": null,\n  "amount": number,\n  "currency": "EUR",\n  "date": "YYYY-MM-DD",\n  "description": null\n}\n\nDELETE INCOME:\n{\n  "action": "delete_income",\n  "client_name": "required",\n  "project_name": null,\n  "date": "YYYY-MM-DD",\n  "amount": null\n}\n\nDELETE CLIENT:\n{\n  "action": "delete_client",\n  "client_name": "required",\n  "force": false\n}\n\nCREATE COMPANY:\n{\n  "action": "create_company",\n  "company_name": "required"\n}\n\nRules:\n- Prefer MULTIPLE actions in actions[] when the user asks for more than one operation.\n- client_name is REQUIRED\n- For add_income: amount is REQUIRED\n- For delete_income: amount optional\n- project_name optional\n- description optional\n- currency default = EUR if not provided\n- date:\n  - if user says "today" -> use "today"\n  - if user says "yesterday" -> use "yesterday"\n  - if no date -> use "today"\n- For delete_client:\n  - set force=true only when user clearly says force delete / delete all data\n- If user says delete project / remove project / delete [project name] / delete [project] from [client], ALWAYS use delete_project (not delete_income)\n- If the input references a known project name, prioritize project actions over income actions',
+            'You convert user input into JSON actions.\n\nAvailable actions:\n- create_client\n- create_clients\n- update_client\n- add_income\n- delete_income\n- delete_client\n- create_company\n- create_project\n- update_project_status\n- delete_project\n- add_mileage\n\n---\n\nReturn ONLY JSON in this format:\n{\n  "actions": [\n    { "action": "..." }\n  ]\n}\n\nEach item in actions[] must match one of these shapes:\n\nCREATE:\n{\n  "action": "create_client",\n  "name": "Client Name",\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE MULTIPLE CLIENTS WITH COMPANY:\n{\n  "action": "create_clients",\n  "clients": [\n    {\n      "name": "required",\n      "email": null,\n      "notes": null\n    }\n  ],\n  "company_name": "optional"\n}\n\nUPDATE:\n{\n  "action": "update_client",\n  "search_name": "existing client name",\n  "new_name": null,\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE PROJECT:\n{\n  "action": "create_project",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "active",\n  "start_date": "today",\n  "end_date": null\n}\n\nUPDATE PROJECT STATUS:\n{\n  "action": "update_project_status",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "finished",\n  "end_date": "today"\n}\n\nDELETE PROJECT:\n{\n  "action": "delete_project",\n  "client_name": "required",\n  "project_name": "required"\n}\n\nADD INCOME:\n{\n  "action": "add_income",\n  "client_name": "required",\n  "project_name": null,\n  "amount": number,\n  "currency": "EUR",\n  "date": "YYYY-MM-DD",\n  "description": null\n}\n\nDELETE INCOME:\n{\n  "action": "delete_income",\n  "client_name": "required",\n  "project_name": null,\n  "date": "YYYY-MM-DD",\n  "amount": null\n}\n\nDELETE CLIENT:\n{\n  "action": "delete_client",\n  "client_name": "required",\n  "force": false\n}\n\nCREATE COMPANY:\n{\n  "action": "create_company",\n  "company_name": "required"\n}\n\nRules:\n- Prefer MULTIPLE actions in actions[] when the user asks for more than one operation.\n- client_name is REQUIRED\n- For add_income: amount is REQUIRED\n- For delete_income: amount optional\n- project_name optional\n- description optional\n- currency default = EUR if not provided\n- date:\n  - if user says "today" -> use "today"\n  - if user says "yesterday" -> use "yesterday"\n  - if user says "tomorrow" -> use "tomorrow"\n  - if no date -> use "today"\n- For delete_client:\n  - set force=true only when user clearly says force delete / delete all data\n- If user says delete project / remove project / delete [project name] / delete [project] from [client], ALWAYS use delete_project (not delete_income)\n- If the input references a known project name, prioritize project actions over income actions' +
+            mileagePromptAppend,
         },
         { role: "user", content: message },
       ],

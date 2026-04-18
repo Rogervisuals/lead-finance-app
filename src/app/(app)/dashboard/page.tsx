@@ -14,85 +14,23 @@ import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 import { sumDashboardEstimatedTax } from "@/lib/finance/company-tax";
 import { getServerLocale } from "@/lib/i18n/server";
 import { getUi } from "@/lib/i18n/get-ui";
-import { intlLocaleTag } from "@/lib/i18n/intl-locale";
 import type { Locale } from "@/lib/i18n/locale";
-import { canViewRateInsights } from "@/lib/permissions";
+import { canExportDataPdf, canViewRateInsights } from "@/lib/permissions";
 import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
 import { InsightLockedState } from "@/components/subscription/RateInsightLock";
+import { DashboardDataExportPdfControl } from "@/components/dashboard/DashboardDataExportPdfControl";
+import {
+  DASHBOARD_RANGE_MIN_YEAR,
+  formatMonthYearLabel,
+  formatYearLabel,
+  resolveDashboardOrCustomRange,
+  toISODateOnly,
+} from "@/lib/dashboard-date-range";
+import { getYearsWithActivityInRange } from "@/lib/dashboard-user-active-years";
+import { buildGettingStartedState } from "@/lib/dashboard-getting-started";
+import { DashboardGettingStarted } from "@/components/dashboard/DashboardGettingStarted";
 
 export const dynamic = "force-dynamic";
-
-function toISODateOnly(d: Date) {
-  // IMPORTANT: use local date parts (not UTC) so month boundaries don't shift by timezone.
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function sumIncomeConverted(
-  rows: Array<{ amount_converted?: string | number | null | undefined }>
-) {
-  return rows.reduce((acc, r) => acc + Number(r.amount_converted ?? 0), 0);
-}
-
-function monthLabel(year: number, monthIndex0: number, locale: Locale) {
-  const d = new Date(year, monthIndex0, 1);
-  return d.toLocaleString(intlLocaleTag(locale), { month: "long", year: "numeric" });
-}
-
-function getRangeMeta({
-  year,
-  monthIndex0,
-  range,
-  locale,
-  allTimeLabel,
-}: {
-  year: number;
-  monthIndex0: number;
-  range?: string;
-  locale: Locale;
-  allTimeLabel: string;
-}) {
-  const currentMonthStart = new Date(year, monthIndex0, 1);
-  const currentMonthEndExclusive = new Date(year, monthIndex0 + 1, 1);
-
-  if (!range) {
-    return {
-      kind: "month" as const,
-      label: monthLabel(year, monthIndex0, locale),
-      monthStart: currentMonthStart,
-      monthEndExclusive: currentMonthEndExclusive,
-    };
-  }
-
-  if (range === "all") {
-    return {
-      kind: "all" as const,
-      label: allTimeLabel,
-      monthStart: null as Date | null,
-      monthEndExclusive: null as Date | null,
-    };
-  }
-
-  const monthMatch = /^month-(\d{4})-(\d{2})$/.exec(range);
-  if (monthMatch) {
-    const y = Number(monthMatch[1]);
-    const m = Number(monthMatch[2]) - 1;
-    const start = new Date(y, m, 1);
-    const endExclusive = new Date(y, m + 1, 1);
-    const label = monthLabel(y, m, locale);
-    return { kind: "month" as const, label, monthStart: start, monthEndExclusive: endExclusive };
-  }
-
-  // fallback
-  return {
-    kind: "month" as const,
-    label: monthLabel(year, monthIndex0, locale),
-    monthStart: currentMonthStart,
-    monthEndExclusive: currentMonthEndExclusive,
-  };
-}
 
 export default async function DashboardPage({
   searchParams,
@@ -108,12 +46,46 @@ export default async function DashboardPage({
 
   const userId = user.id;
 
-  // These are independent once we have `userId` — do them in parallel to reduce initial load time.
-  const [plan, settings] = await Promise.all([
+  const now = new Date();
+  const year = now.getFullYear();
+  const monthIndex0 = now.getMonth();
+
+  // Ensure `user_settings` exists before reading checklist row + counts (avoids a race on first visit).
+  const [plan, settings, activeYears] = await Promise.all([
     ensureSubscriptionAndGetPlan(supabase, userId),
     getOrCreateUserFinancialSettings(userId),
+    getYearsWithActivityInRange(supabase, userId, DASHBOARD_RANGE_MIN_YEAR, year, "dashboard"),
   ]);
+
+  const [{ data: checklistRow }, clientCountRes, projectCountRes, incomeCountRes, expenseCountRes] =
+    await Promise.all([
+      supabase
+        .from("user_settings")
+        .select(
+          "financial_settings_saved_at,business_name,invoice_logo_path",
+        )
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabase
+        .from("clients")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
+      supabase
+        .from("projects")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId),
+      supabase.from("income").select("id", { count: "exact", head: true }).eq("user_id", userId),
+      supabase.from("expenses").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    ]);
+
+  const gettingStarted = buildGettingStartedState(plan, checklistRow, {
+    clients: clientCountRes.count ?? 0,
+    projects: projectCountRes.count ?? 0,
+    income: incomeCountRes.count ?? 0,
+    expenses: expenseCountRes.count ?? 0,
+  });
   const rateInsights = canViewRateInsights(plan);
+  const exportDataPdf = canExportDataPdf(plan);
 
   const locale = getServerLocale();
   const ui = getUi(locale);
@@ -121,19 +93,19 @@ export default async function DashboardPage({
   const vatEnabled = settings.vat_enabled;
   const vatRate = settings.vat_percentage / 100;
   const baseCurrency = settings.base_currency;
-  const now = new Date();
-  const year = now.getFullYear();
-  const monthIndex0 = now.getMonth();
-  const { kind, label, monthStart, monthEndExclusive } = getRangeMeta({
+  const { kind, label, monthStart, monthEndExclusive } = resolveDashboardOrCustomRange({
     year,
     monthIndex0,
     range: searchParams?.range,
+    from: null,
+    to: null,
     locale,
     allTimeLabel: ui.dashboard.allTimeLabel,
   });
 
   const isoStart = monthStart ? toISODateOnly(monthStart) : null;
   const isoEndExclusive = monthEndExclusive ? toISODateOnly(monthEndExclusive) : null;
+  const isoEndInclusive = isoEndExclusive;
 
   // Start tax calculation early so it can run in parallel with the main dashboard queries.
   // This preserves behavior (same inputs / same result) but removes a waterfall.
@@ -153,8 +125,8 @@ export default async function DashboardPage({
   const [
     { data: clients },
     { data: projects },
-    { data: incomeMonthRows },
-    { data: expenseMonthRows },
+    { data: incomeMonthSumRows },
+    { data: expensesMonthSumRows },
     { data: incomeRecentRows },
     { data: expenseRecentRows },
     { data: hoursRows },
@@ -175,37 +147,25 @@ export default async function DashboardPage({
     (kind === "all"
       ? supabase
           .from("income")
-          .select(
-            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
-          )
+          .select("amount_converted", { count: "exact", head: false })
           .eq("user_id", userId)
-          .order("date", { ascending: false })
       : supabase
           .from("income")
-          .select(
-            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
-          )
+          .select("amount_converted", { count: "exact", head: false })
           .eq("user_id", userId)
           .gte("date", isoStart!)
-          .lt("date", isoEndExclusive!)
-          .order("date", { ascending: false })) as any,
+          .lte("date", isoEndInclusive!)) as any,
     (kind === "all"
       ? supabase
           .from("expenses")
-          .select(
-            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
-          )
+          .select("amount_converted", { count: "exact", head: false })
           .eq("user_id", userId)
-          .order("date", { ascending: false })
       : supabase
           .from("expenses")
-          .select(
-            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
-          )
+          .select("amount_converted", { count: "exact", head: false })
           .eq("user_id", userId)
           .gte("date", isoStart!)
-          .lt("date", isoEndExclusive!)
-          .order("date", { ascending: false })) as any,
+          .lte("date", isoEndInclusive!)) as any,
     (kind === "all"
       ? supabase
           .from("income")
@@ -222,7 +182,7 @@ export default async function DashboardPage({
           )
           .eq("user_id", userId)
           .gte("date", isoStart!)
-          .lt("date", isoEndExclusive!)
+          .lte("date", isoEndInclusive!)
           .order("date", { ascending: false })
           .limit(5)) as any,
     (kind === "all"
@@ -241,7 +201,7 @@ export default async function DashboardPage({
           )
           .eq("user_id", userId)
           .gte("date", isoStart!)
-          .lt("date", isoEndExclusive!)
+          .lte("date", isoEndInclusive!)
           .order("date", { ascending: false })
           .limit(5)) as any,
     (kind === "all"
@@ -257,35 +217,33 @@ export default async function DashboardPage({
           .lt("start_time", monthEndExclusive!.toISOString())) as any,
     supabase
       .from("income")
-      .select("amount_converted,client_id")
-      .eq("user_id", userId),
+      .select("amount_converted,client_id,project_id")
+      .eq("user_id", userId)
+      .limit(1000),
     supabase
       .from("hours")
       .select("hours,project_id,client_id")
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      .limit(1000),
     estimatedTaxPromise,
   ]);
 
   const clientById = new Map((clients ?? []).map((c) => [c.id, c]));
   const projectById = new Map((projects ?? []).map((p) => [p.id, p]));
 
-  const incomeMonth = sumIncomeConverted(incomeMonthRows ?? []);
-  const expensesMonth = sumIncomeConverted(expenseMonthRows ?? []);
+  const incomeMonth = (incomeMonthSumRows ?? []).reduce(
+    (acc: number, row: any) => acc + Number(row?.amount_converted ?? 0),
+    0
+  );
+
+  const expensesMonth = (expensesMonthSumRows ?? []).reduce(
+    (acc: number, row: any) => acc + Number(row?.amount_converted ?? 0),
+    0
+  );
 
   const projectToClient = new Map<string, string>(
     (projects ?? []).map((p: any) => [p.id, p.client_id])
   );
-
-  const incomeByClientInRange = new Map<string, number>();
-  for (const r of incomeMonthRows ?? []) {
-    const cid = (r as any).client_id as string | null;
-    if (!cid) continue;
-    incomeByClientInRange.set(
-      cid,
-      (incomeByClientInRange.get(cid) ?? 0) +
-        Number((r as any).amount_converted ?? 0),
-    );
-  }
 
   const hoursByClientInRange = new Map<string, number>();
   for (const r of hoursRows ?? []) {
@@ -303,13 +261,17 @@ export default async function DashboardPage({
 
   // Hourly rate widgets are ALL-TIME so they match client pages.
   const incomeByClientAll = new Map<string, number>();
+
   for (const r of incomeAllRows ?? []) {
-    const cid = (r as any).client_id as string | null;
+    let cid = (r as any).client_id as string | null | undefined;
+    if (!cid) {
+      const pid = (r as any).project_id as string | null;
+      if (pid) cid = projectToClient.get(pid) ?? null;
+    }
     if (!cid) continue;
     incomeByClientAll.set(
       cid,
-      (incomeByClientAll.get(cid) ?? 0) +
-        Number((r as any).amount_converted ?? 0),
+      (incomeByClientAll.get(cid) ?? 0) + Number((r as any).amount_converted ?? 0)
     );
   }
 
@@ -323,7 +285,7 @@ export default async function DashboardPage({
     if (!cid) continue;
     hoursByClientAll.set(
       cid,
-      (hoursByClientAll.get(cid) ?? 0) + Number((r as any).hours ?? 0),
+      (hoursByClientAll.get(cid) ?? 0) + Number((r as any).hours ?? 0)
     );
   }
 
@@ -377,15 +339,73 @@ export default async function DashboardPage({
     .sort((a, b) => (a.date < b.date ? 1 : -1))
     .slice(0, 8);
 
+  const candidateYears = Array.from(
+    { length: Math.max(0, year - DASHBOARD_RANGE_MIN_YEAR + 1) },
+    (_, i) => year - i
+  );
+  const rangeYearMatch = /^year-(\d{4})$/.exec(searchParams?.range ?? "");
+  const selectedYear =
+    rangeYearMatch != null ? Number(rangeYearMatch[1]) : null;
+
+  let yearOptions = candidateYears
+    .filter((y) => activeYears.has(y))
+    .map((y) => ({
+      value: `year-${y}`,
+      label: formatYearLabel(y, locale),
+    }));
+
+  if (
+    selectedYear != null &&
+    selectedYear >= DASHBOARD_RANGE_MIN_YEAR &&
+    selectedYear <= year &&
+    !yearOptions.some((o) => o.value === `year-${selectedYear}`)
+  ) {
+    yearOptions = [
+      {
+        value: `year-${selectedYear}`,
+        label: formatYearLabel(selectedYear, locale),
+      },
+      ...yearOptions,
+    ];
+  }
+
   const monthOptions = Array.from({ length: monthIndex0 + 1 }).map((_, i) => {
     const m = String(i + 1).padStart(2, "0");
     return {
       value: `month-${year}-${m}`,
-      label: monthLabel(year, i, locale),
+      label: formatMonthYearLabel(year, i, locale),
     };
   });
+
+  const taxReportPdfHref =
+    searchParams?.range != null && searchParams.range !== ""
+      ? `/api/tax-report-pdf?range=${encodeURIComponent(searchParams.range)}`
+      : "/api/tax-report-pdf";
+
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
+      <DashboardGettingStarted
+        progressDone={gettingStarted.progressDone}
+        progressTotal={gettingStarted.progressTotal}
+        allDone={gettingStarted.allDone}
+        items={gettingStarted.items}
+        title={ui.dashboard.gettingStartedTitle}
+        progressTemplate={ui.dashboard.gettingStartedProgress}
+        allDoneTitle={ui.dashboard.gettingStartedAllDoneTitle}
+        allDoneBody={ui.dashboard.gettingStartedAllDoneBody}
+        upgradeLabel={ui.dashboard.gettingStartedUpgrade}
+        labels={{
+          baseCurrency: ui.dashboard.gettingStartedBaseCurrency,
+          vat: ui.dashboard.gettingStartedVat,
+          tax: ui.dashboard.gettingStartedTax,
+          client: ui.dashboard.gettingStartedClient,
+          project: ui.dashboard.gettingStartedProject,
+          income: ui.dashboard.gettingStartedIncome,
+          expense: ui.dashboard.gettingStartedExpense,
+          invoice: ui.dashboard.gettingStartedInvoice,
+        }}
+      />
+
       {searchParams?.upgrade === "business" ? (
         <div
           className="rounded-lg border border-amber-900/50 bg-amber-950/25 px-4 py-3 text-sm text-amber-100"
@@ -413,6 +433,12 @@ export default async function DashboardPage({
           </p>
         </div>
         <div className="flex w-full flex-col items-center justify-center gap-2 sm:flex-row md:w-auto md:justify-end">
+          <DashboardDataExportPdfControl
+            href={taxReportPdfHref}
+            canExport={exportDataPdf}
+            label={ui.dashboard.exportDataPdf}
+            lockedTitle={ui.dashboard.exportDataPdfProOnly}
+          />
           <form method="get" action="/dashboard" className="flex gap-2">
             <select
               name="range"
@@ -423,6 +449,11 @@ export default async function DashboardPage({
               className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 outline-none"
             >
               <option value="all">{ui.dashboard.rangeAllTime}</option>
+              {yearOptions.map((y) => (
+                <option value={y.value} key={y.value}>
+                  {y.label}
+                </option>
+              ))}
               {monthOptions.map((m) => (
                 <option value={m.value} key={m.value}>
                   {m.label}
@@ -439,74 +470,76 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+      <section className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
           {ui.dashboard.mainFinancialBlock}
         </h2>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 xl:items-stretch">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4 xl:items-stretch">
           <div
-            className="rounded-xl border border-sky-900/40 bg-zinc-950/50 p-6 md:col-span-2 xl:col-span-2 xl:row-span-2"
+            className="min-w-0 rounded-xl border border-sky-900/40 bg-zinc-950/50 p-6 md:col-span-2 xl:col-span-2 xl:row-span-2"
             data-fin-card="net"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="text-sm text-zinc-400">{ui.dashboard.netMonth}</div>
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 text-sm text-zinc-400">{ui.dashboard.netMonth}</div>
               <DashboardBlockHint>
                 <p>{ui.dashboard.netMonthHint}</p>
               </DashboardBlockHint>
             </div>
-            <div className="mt-4">
+            <div className="mt-4 min-w-0">
               <CurrencyWithUsd
                 amount={netMonth}
                 currency={baseCurrency}
-                primaryClassName="text-5xl font-semibold text-sky-300"
+                primaryClassName="text-4xl font-semibold tabular-nums text-sky-300 sm:text-5xl"
                 usdClassName="mt-1.5 text-sm font-medium tabular-nums text-sky-200/75"
               />
             </div>
           </div>
           <div
-            className="rounded-xl border border-emerald-900/40 bg-zinc-950/30 p-4"
+            className="min-w-0 rounded-xl border border-emerald-900/40 bg-zinc-950/30 p-4"
             data-fin-card="income"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="text-sm text-zinc-400">{ui.dashboard.incomeExclVat}</div>
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 text-sm text-zinc-400">{ui.dashboard.incomeExclVat}</div>
               <DashboardBlockHint>
                 <p>{ui.dashboard.incomeExclVatHint}</p>
               </DashboardBlockHint>
             </div>
-            <div className="mt-2">
+            <div className="mt-2 min-w-0">
               <CurrencyWithUsd
                 amount={incomeExclVat}
                 currency={baseCurrency}
-                primaryClassName="text-lg font-semibold text-emerald-300"
+                primaryClassName="text-lg font-semibold tabular-nums text-emerald-300"
                 usdClassName="mt-1 text-xs tabular-nums text-emerald-200/70"
               />
             </div>
           </div>
           <div
-            className="rounded-xl border border-rose-900/40 bg-zinc-950/30 p-4"
+            className="min-w-0 rounded-xl border border-rose-900/40 bg-zinc-950/30 p-4"
             data-fin-card="expenses"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="text-sm text-zinc-400">{ui.dashboard.expensesMonth}</div>
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 text-sm text-zinc-400">{ui.dashboard.expensesMonth}</div>
               <DashboardBlockHint>
                 <p>{ui.dashboard.expensesMonthHint}</p>
               </DashboardBlockHint>
             </div>
-            <div className="mt-2">
+            <div className="mt-2 min-w-0">
               <CurrencyWithUsd
                 amount={expensesMonth}
                 currency={baseCurrency}
-                primaryClassName="text-lg font-semibold text-rose-300"
+                primaryClassName="text-lg font-semibold tabular-nums text-rose-300"
                 usdClassName="mt-1 text-xs tabular-nums text-rose-200/70"
               />
             </div>
           </div>
           <div
-            className="rounded-xl border border-amber-900/40 bg-zinc-950/30 p-4"
+            className="min-w-0 rounded-xl border border-amber-900/40 bg-zinc-950/30 p-4"
             data-fin-card="tax"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="text-sm text-zinc-400">{ui.dashboard.estimatedTax} ({settings.tax_percentage}%)</div>
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 text-sm text-zinc-400">
+                {ui.dashboard.estimatedTax} ({settings.tax_percentage}%)
+              </div>
               <DashboardBlockHint>
                 <p>
                   {ui.dashboard.estimatedTaxIntro}{" "}
@@ -521,30 +554,30 @@ export default async function DashboardPage({
                 </p>
               </DashboardBlockHint>
             </div>
-            <div className="mt-2">
+            <div className="mt-2 min-w-0">
               <CurrencyWithUsd
                 amount={estimatedTax}
                 currency={baseCurrency}
-                primaryClassName="text-lg font-semibold text-amber-300"
+                primaryClassName="text-lg font-semibold tabular-nums text-amber-300"
                 usdClassName="mt-1 text-xs tabular-nums text-amber-200/70"
               />
             </div>
           </div>
           <div
-            className="rounded-xl border border-cyan-900/40 bg-zinc-950/30 p-4"
+            className="min-w-0 rounded-xl border border-cyan-900/40 bg-zinc-950/30 p-4"
             data-fin-card="safe-to-spend"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div className="text-sm text-zinc-400">{ui.dashboard.safeToSpend}</div>
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 text-sm text-zinc-400">{ui.dashboard.safeToSpend}</div>
               <DashboardBlockHint>
                 <p>{ui.dashboard.safeToSpendHint}</p>
               </DashboardBlockHint>
             </div>
-            <div className="mt-2">
+            <div className="mt-2 min-w-0">
               <CurrencyWithUsd
                 amount={safeToSpend}
                 currency={baseCurrency}
-                primaryClassName="text-lg font-semibold text-cyan-300"
+                primaryClassName="text-lg font-semibold tabular-nums text-cyan-300"
                 usdClassName="mt-1 text-xs tabular-nums text-cyan-200/70"
               />
             </div>
@@ -781,7 +814,7 @@ function CompactInsightCard({
     <div
       data-insight-card
       data-insight-accent={accent}
-      className={`group flex h-full min-h-[9.5rem] flex-col rounded-xl border bg-zinc-950/30 p-4 shadow-sm transition-[box-shadow,border-color] duration-200 hover:shadow-md ${insightAccentBorder[accent]}`}
+      className={`group flex h-full min-h-[9.5rem] min-w-0 flex-col rounded-xl border bg-zinc-950/30 p-4 shadow-sm transition-[box-shadow,border-color] duration-200 hover:shadow-md ${insightAccentBorder[accent]}`}
     >
       <div
         className="flex items-start justify-between gap-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500"

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { DeleteLabel } from "@/components/icons/LabeledIcons";
 import { createCompanyAction, deleteCompanyAction } from "../server-actions/companies";
 import { getServerLocale } from "@/lib/i18n/server";
 import { getUi } from "@/lib/i18n/get-ui";
@@ -112,7 +113,7 @@ export default async function CompaniesPage({
                           type="submit"
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          {ui.common.delete}
+                          <DeleteLabel>{ui.common.delete}</DeleteLabel>
                         </button>
                       </form>
                     </td>

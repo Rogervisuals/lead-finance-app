@@ -1,4 +1,5 @@
 import { CurrencyWithUsd } from "@/components/display/CurrencyWithUsd";
+import { TrashIcon } from "@/components/icons/LabeledIcons";
 import {
   createIncomeFromTemplateAction,
   deleteIncomeTemplateAction,
@@ -84,7 +85,7 @@ async function IncomeQuickTemplateButton({
           aria-label="Remove template"
           className="flex h-6 w-6 items-center justify-center rounded-tr-md text-sm leading-none text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
         >
-          ×
+          <TrashIcon className="h-3.5 w-3.5" />
         </button>
       </form>
     </div>

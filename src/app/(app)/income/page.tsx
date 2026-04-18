@@ -15,6 +15,7 @@ import {
   deleteIncomeTemplateAction,
 } from "../server-actions/income";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
+import { DeleteLabel, EditLabel } from "@/components/icons/LabeledIcons";
 import { getServerLocale } from "@/lib/i18n/server";
 import { getUi } from "@/lib/i18n/get-ui";
 
@@ -47,7 +48,7 @@ function incomeMatchesTemplate(
 export default async function IncomePage({
   searchParams,
 }: {
-  searchParams?: { template_error?: string; error?: string };
+  searchParams?: { template_error?: string; error?: string; client?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -108,6 +109,12 @@ export default async function IncomePage({
     : totalNet;
   const totalVat = vatEnabled ? totalNet * vatRate : 0;
 
+  const clientParam = String(searchParams?.client ?? "").trim();
+  const initialIncomeClientId =
+    clientParam && (clients ?? []).some((c: { id: string }) => c.id === clientParam)
+      ? clientParam
+      : undefined;
+
   return (
     <div className="space-y-6">
       <div>
@@ -116,7 +123,7 @@ export default async function IncomePage({
           {ui.income.subtitle}
         </p>
       </div>
-
+{/*}
       <section className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-emerald-900/50 bg-zinc-900/20 p-4 lg:p-5">
           <div className="text-sm text-zinc-400">{ui.income.exclVat}</div>
@@ -139,7 +146,7 @@ export default async function IncomePage({
               <CurrencyWithUsd
                 amount={totalVat}
                 currency={baseCurrency}
-                primaryClassName="text-xl font-semibold text-amber-300"
+                primaryClassName="text-xl font-semibold text-amber-200"
                 usdClassName="mt-1 text-xs tabular-nums text-amber-200/70"
               />
             }
@@ -169,7 +176,7 @@ export default async function IncomePage({
           {ui.income.vatDisabled}
         </div>
       ) : null}
-
+  */}
       <section className="min-w-0 overflow-x-clip rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">
           {ui.income.addIncome}
@@ -189,6 +196,7 @@ export default async function IncomePage({
             clientLabel={ui.components.clientRequired}
             projectLabel={ui.components.projectOptional}
             noProjectLabel={ui.components.noProject}
+            initialClientId={initialIncomeClientId}
           />
 
           <label className="min-w-0 space-y-1">
@@ -197,7 +205,7 @@ export default async function IncomePage({
               required
               name="date"
               type="date"
-              className="w-full min-w-0 max-w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
+              className="w-full min-w-0 max-w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1 text-sm outline-none focus:border-sky-500"
             />
           </label>
 
@@ -295,8 +303,8 @@ export default async function IncomePage({
                         baseCurrency={baseCurrency}
                       />
                     </td>
-                    <td className="py-2 text-right">
-                      <div className="flex justify-end gap-2">
+                    <td className="py-1 text-right">
+                      <div className="flex justify-end gap-1">
                         <form action={addIncomeTemplateFromIncomeAction}>
                           <input type="hidden" name="income_id" value={r.id} />
                           <button
@@ -307,7 +315,7 @@ export default async function IncomePage({
                                 ? ui.income.templateAlready
                                 : ui.income.templateSave
                             }
-                            className="shrink-0 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950/20 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-950/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-zinc-950/20"
+                            className="shrink-0 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-zinc-950/20"
                           >
                             {ui.income.addToRegulars}
                           </button>
@@ -316,7 +324,7 @@ export default async function IncomePage({
                           href={`/income/${r.id}/edit`}
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          {ui.common.edit}
+                          <EditLabel>{ui.common.edit}</EditLabel>
                         </Link>
                         <form action={deleteIncomeAction}>
                           <input type="hidden" name="id" value={r.id} />
@@ -324,9 +332,10 @@ export default async function IncomePage({
                             type="submit"
                             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                           >
-                            🗑
+                            <DeleteLabel>{ui.common.delete}</DeleteLabel>
                           </button>
                         </form>
+                        
                       </div>
                     </td>
                   </tr>

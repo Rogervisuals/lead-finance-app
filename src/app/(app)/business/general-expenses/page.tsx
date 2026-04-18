@@ -6,6 +6,17 @@ import { GeneralExpenseQuickTemplateButtons } from "@/components/business/Genera
 import { IncomeCurrencyFields } from "@/components/forms/IncomeCurrencyFields";
 import { IncomeAmountDisplay } from "@/components/display/IncomeAmountDisplay";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
+import { DeleteLabel, EditLabel } from "@/components/icons/LabeledIcons";
+import { getServerLocale } from "@/lib/i18n/server";
+import { getUi } from "@/lib/i18n/get-ui";
+import {
+  DASHBOARD_RANGE_MIN_YEAR,
+  formatMonthYearLabel,
+  formatYearLabel,
+  resolveDashboardOrCustomRange,
+  toISODateOnly,
+} from "@/lib/dashboard-date-range";
+import { getYearsWithActivityInRange } from "@/lib/dashboard-user-active-years";
 import {
   addGeneralExpenseTemplateFromExpenseAction,
   createBusinessExpenseAction,
@@ -13,67 +24,6 @@ import {
 } from "../../server-actions/business-expenses";
 
 export const dynamic = "force-dynamic";
-
-function toISODateOnly(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-function monthLabel(year: number, monthIndex0: number) {
-  const dt = new Date(year, monthIndex0, 1);
-  return dt.toLocaleString(undefined, { month: "long", year: "numeric" });
-}
-
-function getRangeMeta({
-  year,
-  monthIndex0,
-  range,
-}: {
-  year: number;
-  monthIndex0: number;
-  range?: string;
-}) {
-  const currentMonthStart = new Date(year, monthIndex0, 1);
-  const currentMonthEndExclusive = new Date(year, monthIndex0 + 1, 1);
-
-  if (!range) {
-    return {
-      kind: "month" as const,
-      label: monthLabel(year, monthIndex0),
-      monthStart: currentMonthStart,
-      monthEndExclusive: currentMonthEndExclusive,
-    };
-  }
-
-  if (range === "all") {
-    return {
-      kind: "all" as const,
-      label: "All time",
-      monthStart: null as Date | null,
-      monthEndExclusive: null as Date | null,
-    };
-  }
-
-  const monthMatch = /^month-(\d{4})-(\d{2})$/.exec(range);
-  if (monthMatch) {
-    const y = Number(monthMatch[1]);
-    const m = Number(monthMatch[2]) - 1;
-    const start = new Date(y, m, 1);
-    const endExclusive = new Date(y, m + 1, 1);
-    return {
-      kind: "month" as const,
-      label: monthLabel(y, m),
-      monthStart: start,
-      monthEndExclusive: endExclusive,
-    };
-  }
-
-  return {
-    kind: "month" as const,
-    label: monthLabel(year, monthIndex0),
-    monthStart: currentMonthStart,
-    monthEndExclusive: currentMonthEndExclusive,
-  };
-}
 
 function sumAmounts(rows: Array<{ amount: string | number | null | undefined }>) {
   return rows.reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
@@ -106,24 +56,23 @@ export default async function GeneralExpensesPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const locale = getServerLocale();
+  const ui = getUi(locale);
+
   const now = new Date();
   const year = now.getFullYear();
   const monthIndex0 = now.getMonth();
-  const { kind, label, monthStart, monthEndExclusive } = getRangeMeta({
+  const { kind, label, monthStart, monthEndExclusive } = resolveDashboardOrCustomRange({
     year,
     monthIndex0,
     range: searchParams?.range,
+    from: null,
+    to: null,
+    locale,
+    allTimeLabel: ui.dashboard.allTimeLabel,
   });
   const isoStart = monthStart ? toISODateOnly(monthStart) : null;
   const isoEndExclusive = monthEndExclusive ? toISODateOnly(monthEndExclusive) : null;
-
-  const monthOptions = Array.from({ length: monthIndex0 + 1 }).map((_, i) => {
-    const m = String(i + 1).padStart(2, "0");
-    return {
-      value: `month-${year}-${m}`,
-      label: monthLabel(year, i),
-    };
-  });
 
   const rowsQuery = (() => {
     let q = supabase
@@ -132,13 +81,13 @@ export default async function GeneralExpensesPage({
         "id,amount,amount_original,currency,exchange_rate,date,category,notes,created_at"
       )
       .eq("user_id", user.id);
-    if (kind === "month" && isoStart && isoEndExclusive) {
+    if (kind !== "all" && isoStart && isoEndExclusive) {
       q = q.gte("date", isoStart).lt("date", isoEndExclusive);
     }
     return q.order("date", { ascending: false });
   })();
 
-  const [{ data: rows }, { data: templates }, settings] = await Promise.all([
+  const [{ data: rows }, { data: templates }, settings, activeYears] = await Promise.all([
     rowsQuery,
     supabase
       .from("general_expenses_templates")
@@ -147,7 +96,52 @@ export default async function GeneralExpensesPage({
       .eq("is_active", true)
       .order("created_at", { ascending: false }),
     getOrCreateUserFinancialSettings(user.id),
+    getYearsWithActivityInRange(
+      supabase,
+      user.id,
+      DASHBOARD_RANGE_MIN_YEAR,
+      year,
+      "business_expenses"
+    ),
   ]);
+
+  const candidateYears = Array.from(
+    { length: Math.max(0, year - DASHBOARD_RANGE_MIN_YEAR + 1) },
+    (_, i) => year - i
+  );
+  const rangeYearMatch = /^year-(\d{4})$/.exec(searchParams?.range ?? "");
+  const selectedYear =
+    rangeYearMatch != null ? Number(rangeYearMatch[1]) : null;
+
+  let yearOptions = candidateYears
+    .filter((y) => activeYears.has(y))
+    .map((y) => ({
+      value: `year-${y}`,
+      label: formatYearLabel(y, locale),
+    }));
+
+  if (
+    selectedYear != null &&
+    selectedYear >= DASHBOARD_RANGE_MIN_YEAR &&
+    selectedYear <= year &&
+    !yearOptions.some((o) => o.value === `year-${selectedYear}`)
+  ) {
+    yearOptions = [
+      {
+        value: `year-${selectedYear}`,
+        label: formatYearLabel(selectedYear, locale),
+      },
+      ...yearOptions,
+    ];
+  }
+
+  const monthOptions = Array.from({ length: monthIndex0 + 1 }).map((_, i) => {
+    const m = String(i + 1).padStart(2, "0");
+    return {
+      value: `month-${year}-${m}`,
+      label: formatMonthYearLabel(year, i, locale),
+    };
+  });
 
   const totalSpendings = sumAmounts(rows ?? []);
   const baseCurrency = settings.base_currency;
@@ -175,7 +169,12 @@ export default async function GeneralExpensesPage({
               }
               className="rounded-md border border-zinc-800 bg-zinc-900/20 px-3 py-2 text-sm text-zinc-100 outline-none"
             >
-              <option value="all">Total (all time)</option>
+              <option value="all">{ui.dashboard.rangeAllTime}</option>
+              {yearOptions.map((y) => (
+                <option value={y.value} key={y.value}>
+                  {y.label}
+                </option>
+              ))}
               {monthOptions.map((m) => (
                 <option value={m.value} key={m.value}>
                   {m.label}
@@ -228,7 +227,7 @@ export default async function GeneralExpensesPage({
 
           <label className="block min-w-0 max-w-full space-y-1 overflow-hidden">
             <span className="text-sm text-zinc-300">Date *</span>
-            <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 [color-scheme:dark]">
+            <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1 [color-scheme:dark]">
               <input
                 required
                 name="date"
@@ -249,6 +248,8 @@ export default async function GeneralExpensesPage({
               <option value="Online services">Online services</option>
               <option value="Transport">Transport</option>
               <option value="events">events</option>
+              <option value="events">Equipment</option>
+              <option value="events">Food (business)</option>
             </select>
           </label>
 
@@ -344,19 +345,19 @@ export default async function GeneralExpensesPage({
                             disabled={alreadyRegular}
                             title={
                               alreadyRegular
-                                ? "Already saved as a quick template"
-                                : "Save as quick template"
+                                ? ui.expenses.templateAlready
+                                : ui.expenses.templateSave
                             }
                             className="shrink-0 whitespace-nowrap rounded-md border border-zinc-800 bg-zinc-950/20 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-950/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-zinc-950/20"
                           >
-                            Add to regulars
+                            {ui.expenses.addToRegulars}
                           </button>
                         </form>
                         <Link
                           href={`/business/general-expenses/${r.id}/edit`}
                           className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                         >
-                          Edit
+                          <EditLabel>{ui.common.edit}</EditLabel>
                         </Link>
                         <form action={deleteBusinessExpenseAction}>
                           <input type="hidden" name="id" value={r.id} />
@@ -364,7 +365,7 @@ export default async function GeneralExpensesPage({
                             type="submit"
                             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                           >
-                            Delete
+                            <DeleteLabel>{ui.common.delete}</DeleteLabel>
                           </button>
                         </form>
                       </div>

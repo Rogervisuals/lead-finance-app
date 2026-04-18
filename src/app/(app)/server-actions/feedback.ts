@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import {
   getDisplayNameFromUserMetadata,
   getNavbarDisplayLabel,
@@ -44,5 +45,6 @@ export async function submitFeedbackAction(
     return { ok: false, error: "Could not send feedback. Try again later." };
   }
 
+  revalidatePath("/feedback");
   return { ok: true, message: "Thanks for your feedback!" };
 }

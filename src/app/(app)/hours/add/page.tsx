@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function AddHoursPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams?: { error?: string; client?: string; project?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -34,6 +34,29 @@ export default async function AddHoursPage({
     ? decodeURIComponent(searchParams.error).replace(/\+/g, " ")
     : null;
 
+  const clientsList = (clients ?? []) as Array<{ id: string; name: string }>;
+  const projectsList = (projects ?? []) as Array<{
+    id: string;
+    name: string;
+    client_id: string;
+  }>;
+
+  const clientParam = String(searchParams?.client ?? "").trim();
+  const projectParam = String(searchParams?.project ?? "").trim();
+
+  const fromProject =
+    projectParam && projectsList.some((p) => p.id === projectParam)
+      ? projectsList.find((p) => p.id === projectParam)!
+      : null;
+
+  const initialClientId = fromProject
+    ? fromProject.client_id
+    : clientParam && clientsList.some((c) => c.id === clientParam)
+      ? clientParam
+      : undefined;
+
+  const initialProjectId = fromProject ? fromProject.id : undefined;
+
   return (
     <div className="min-w-0 space-y-6">
       <div>
@@ -56,15 +79,17 @@ export default async function AddHoursPage({
           className="grid min-w-0 max-w-full gap-3 sm:grid-cols-2 [&>label]:min-w-0 [&>div]:min-w-0"
         >
           <ClientProjectSelect
-            clients={(clients ?? []) as any}
-            projects={(projects ?? []) as any}
+            clients={clientsList as any}
+            projects={projectsList as any}
             clientLabel="Client *"
             projectLabel="Project (optional)"
+            initialClientId={initialClientId}
+            initialProjectId={initialProjectId}
           />
 
           <label className="block min-w-0 max-w-full space-y-1 overflow-hidden">
             <span className="text-sm text-zinc-300">Start time *</span>
-            <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 [color-scheme:dark]">
+            <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1 [color-scheme:dark]">
               <input
                 required
                 type="datetime-local"
@@ -76,7 +101,7 @@ export default async function AddHoursPage({
 
           <label className="block min-w-0 max-w-full space-y-1 overflow-hidden">
             <span className="text-sm text-zinc-300">End time *</span>
-            <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 [color-scheme:dark]">
+            <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 px-3 py-1 [color-scheme:dark]">
               <input
                 required
                 type="datetime-local"

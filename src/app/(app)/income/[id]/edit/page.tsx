@@ -1,3 +1,4 @@
+import { DeleteLabel } from "@/components/icons/LabeledIcons";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ClientProjectSelect } from "@/components/forms/ClientProjectSelect";
@@ -101,15 +102,7 @@ export default async function EditIncomePage({
           </div>
         </form>
 
-        <form action={deleteIncomeAction} className="mt-4">
-          <input type="hidden" name="id" value={income.id} />
-          <button
-            type="submit"
-            className="rounded-md border border-zinc-800 bg-zinc-950/20 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-950/40"
-          >
-            Delete income
-          </button>
-        </form>
+
       </section>
     </div>
   );

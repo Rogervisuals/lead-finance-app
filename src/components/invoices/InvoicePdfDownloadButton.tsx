@@ -41,6 +41,7 @@ export function InvoicePdfDownloadButton({
     phone?: string | null;
     website?: string | null;
     iban?: string | null;
+    bic?: string | null;
     vat_number?: string | null;
     kvk_number?: string | null;
     address?: string | null;

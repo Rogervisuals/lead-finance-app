@@ -5,6 +5,7 @@ import {
   deleteFeedbackAdminAction,
   setFeedbackCompletedAction,
 } from "@/app/(app)/server-actions/feedback-admin";
+import { TrashIcon } from "@/components/icons/LabeledIcons";
 
 type Row = {
   id: string;
@@ -38,9 +39,7 @@ export function FeedbackAdminRow({ row }: { row: Row }) {
           className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-50"
           aria-label="Delete feedback"
         >
-          <span className="text-lg leading-none" aria-hidden>
-            ×
-          </span>
+          <TrashIcon className="h-4 w-4" />
         </button>
       </form>
 

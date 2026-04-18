@@ -14,10 +14,15 @@ export type UiCopy = {
     generalExpenses: string;
     mileage: string;
     welcome: string;
+    /** Mobile menu: collapsible label grouping profile + settings under the user name. */
+    profileAndSettings: string;
     profile: string;
     settings: string;
     theme: string;
-    feedback: string;
+    /** User-facing link to the feedback submission page. */
+    sendFeedback: string;
+    /** Admin-only link to the feedback submissions list. */
+    feedbackInbox: string;
     openMenu: string;
     closeMenu: string;
     language: string;
@@ -48,10 +53,12 @@ const en: UiCopy = {
     generalExpenses: "General expenses",
     mileage: "Mileage",
     welcome: "Welcome",
+    profileAndSettings: "Profile & settings",
     profile: "Profile",
     settings: "Settings",
     theme: "Theme",
-    feedback: "Feedback",
+    sendFeedback: "Send feedback",
+    feedbackInbox: "Feedback inbox",
     openMenu: "Open menu",
     closeMenu: "Close menu",
     language: "Language",
@@ -82,10 +89,12 @@ const es: UiCopy = {
     generalExpenses: "Gastos generales",
     mileage: "Kilometraje",
     welcome: "Bienvenido",
+    profileAndSettings: "Perfil y ajustes",
     profile: "Perfil",
     settings: "Ajustes",
     theme: "Tema",
-    feedback: "Comentarios",
+    sendFeedback: "Enviar comentarios",
+    feedbackInbox: "Bandeja de comentarios",
     openMenu: "Abrir menú",
     closeMenu: "Cerrar menú",
     language: "Idioma",

@@ -90,7 +90,9 @@ export function FxSubline({
   const converted = roundMoney(amount * rate);
 
   return (
-    <div className={`${className} inline-flex flex-wrap items-center gap-x-1 gap-y-0.5`}>
+    <div
+      className={`${className} inline-flex max-w-full min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5`}
+    >
       <span>
         ≈ {formatCurrency(converted, effectiveSecondary)}
       </span>

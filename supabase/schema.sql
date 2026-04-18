@@ -27,6 +27,9 @@ alter table public.user_settings
 alter table public.user_settings
   add column if not exists comparison_currency varchar(8) not null default 'USD';
 
+alter table public.user_settings
+  add column if not exists financial_settings_saved_at timestamptz;
+
 alter table public.user_settings enable row level security;
 
 drop policy if exists "user_settings_select_own" on public.user_settings;

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { DeleteLabel } from "@/components/icons/LabeledIcons";
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { IncomeCurrencyFields } from "@/components/forms/IncomeCurrencyFields";
@@ -118,12 +119,12 @@ export default async function EditBusinessExpensePage({
 
         <form action={deleteBusinessExpenseAction} className="mt-4">
           <input type="hidden" name="id" value={expense.id} />
-          <button
+          {/*<button
             type="submit"
             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-950/40"
           >
-            Delete expense
-          </button>
+            <DeleteLabel>Delete expense</DeleteLabel>
+          </button>*/}
         </form>
       </section>
     </div>

@@ -16,8 +16,8 @@ const en = {
   common: {
     back: "Back",
     view: "View",
-    edit: "Edit",
-    delete: "Delete",
+    edit: "",
+    delete: "",
     actions: "Actions",
     save: "Save",
     cancel: "Cancel",
@@ -160,6 +160,23 @@ const en = {
     vatToPayHint:
       "VAT implied by your Settings rate on period income excluding VAT. Update Settings if your regime differs.",
     vatDisabled: "VAT disabled",
+    exportDataPdf: "Export Data (PDF)",
+    exportDataPdfProOnly:
+      "Full data export (PDF) is available on the Pro plan. Upgrade in Settings → Billing to download.",
+    gettingStartedTitle: "Getting started",
+    gettingStartedProgress: "{{done}} of {{total}} completed",
+    gettingStartedAllDoneTitle: "You're all set",
+    gettingStartedAllDoneBody:
+      "You've worked through the setup checklist. You can still change anything anytime in Settings.",
+    gettingStartedBaseCurrency: "Set base currency",
+    gettingStartedVat: "Set VAT percentage or disable VAT",
+    gettingStartedTax: "Set tax percentage",
+    gettingStartedClient: "Add your first client",
+    gettingStartedProject: "Create your first project",
+    gettingStartedIncome: "Add your first income",
+    gettingStartedExpense: "Add your first expense",
+    gettingStartedInvoice: "Set up invoice settings",
+    gettingStartedUpgrade: "Upgrade",
   },
   settings: {
     title: "Settings",
@@ -180,6 +197,15 @@ const en = {
     baseCurrency: "Account base currency",
     baseCurrencyHint:
       "Stored amounts and reports use this as your home currency. Changing it recomputes converted values for existing entries.",
+    baseCurrencyWarningTitle: "Before you change",
+    baseCurrencyWarningBody:
+      "Changing your base currency will recalculate all existing data and may affect historical reports.",
+    baseCurrencyWarningSubtext:
+      "We recommend setting this once during setup and not changing it later.",
+    baseCurrencyConfirmTitle: "Change base currency?",
+    baseCurrencyConfirmBody: "Are you sure? This will update all past data.",
+    baseCurrencyConfirmCancel: "Cancel",
+    baseCurrencyConfirmContinue: "Continue",
     comparisonCurrency: "Approximate conversion currency",
     comparisonCurrencyHint:
       "Used for the \"≈\" line next to figures in another currency (one setting for the whole app).",
@@ -192,6 +218,7 @@ const en = {
     phone: "Phone",
     website: "Website",
     iban: "IBAN",
+    bic: "BIC",
     vatNumber: "VAT number",
     kvk: "Company registration (KvK)",
     address: "Address",
@@ -209,6 +236,22 @@ const en = {
     billingProjects: "Projects",
     billingClients: "Clients",
     billingUnlimited: "Unlimited",
+    billingAiRequests: "AI requests (per day)",
+    billingFeatureBusiness: "Business features",
+    billingFeatureRateInsights: "Rate insights",
+    billingFeatureInvoices: "Invoice & PDF features",
+    billingFeatureTimer: "Active timer",
+    billingFeatureIncluded: "Included",
+    billingFeatureNotIncluded: "Not included",
+    /** Shown on the Invoice & PDF row when the feature is not on the user’s plan (Pro-only). */
+    billingFeatureInvoicesProBadge: "Pro",
+    billingComparePlansHeading: "Compare plans",
+    billingComparePlansIntro:
+      "See limits side by side. Your current tier matches usage below; other columns preview what you unlock when you upgrade.",
+    billingComparePreviewBadge: "Preview",
+    billingCompareYourPlanBadge: "Your plan",
+    billingCompareRecommendedBadge: "Full access",
+    billingCompareUsageDash: "—",
     billingUpgradeHeading: "Upgrade",
     billingManageHeading: "Manage or cancel subscription",
     billingManageBody:
@@ -228,6 +271,25 @@ const en = {
     invoiceProTeaser:
       "Invoice branding and PDF logos are available on the Pro plan.",
     invoiceProTeaserLink: "Go to Billing & subscription",
+    deleteAccountAccordionTitle: "Delete account",
+    deleteAccountTitle: "Permanently delete your account",
+    deleteAccountIntro:
+      "This removes your login and all data we hold for you in Lead Finance (GDPR right to erasure). This cannot be undone.",
+    deleteAccountList1: "Financial records: income, expenses, hours, mileage, invoices, and related templates.",
+    deleteAccountList2: "Clients, projects, companies, and your settings (including any uploaded invoice logo).",
+    deleteAccountList3: "Subscription and usage rows in our database; we also request deletion of your Stripe customer record when one exists.",
+    deleteAccountList4: "You will be signed out immediately after deletion succeeds.",
+    deleteAccountConfirmLabel: "Confirmation",
+    deleteAccountConfirmHint: "Type the word DELETE in capital letters to confirm.",
+    deleteAccountButton: "Delete my account permanently",
+    deleteAccountDeleting: "Deleting account…",
+    deleteAccountErrorConfirm: "Confirmation did not match. Type DELETE in capital letters.",
+    deleteAccountErrorNotSignedIn: "You are not signed in.",
+    deleteAccountErrorNotConfigured:
+      "Account deletion is not available on this server (missing service configuration).",
+    deleteAccountErrorInvoice: "Could not finish cleaning up linked records. Please contact support.",
+    deleteAccountErrorDeleteFailed: "Could not delete the account. Try again or contact support.",
+    deleteAccountErrorUnknown: "Something went wrong. Try again later.",
   },
   clients: {
     title: "Clients",
@@ -272,6 +334,9 @@ const en = {
     tableStatus: "Status",
     tableDates: "Dates",
     noProjects: "No projects yet.",
+    listPageOf: "Page {current} of {total}",
+    listPrevious: "Previous",
+    listNext: "Next",
   },
   income: {
     title: "Income",
@@ -287,9 +352,9 @@ const en = {
     saveIncome: "Save income",
     needClientFirst: "Create at least one client first.",
     quickTemplates: "Quick income templates",
-    noTemplates: "No templates yet. Use \"Add to regulars\" on an income item.",
+    noTemplates: "No templates yet. Use \"+\" on an income item to add it here.",
     recentIncome: "Recent income",
-    addToRegulars: "Add to regulars",
+    addToRegulars: "+",
     templateAlready: "Already saved as a quick template",
     templateSave: "Save as quick template",
     noEntries: "No income entries yet.",
@@ -303,6 +368,9 @@ const en = {
     recentExpenses: "Recent expenses",
     category: "Category",
     noEntries: "No expense entries yet.",
+    addToRegulars: "+",
+    templateAlready: "Already saved as a quick template",
+    templateSave: "Save as quick template",
   },
   hours: {
     title: "Hours",
@@ -362,9 +430,19 @@ const en = {
     loadError:
       "Could not load feedback. Check database policies and that your admin email matches the RLS policy.",
     empty: "No feedback yet.",
+    submitTitle: "Send feedback",
+    submitSubtitle:
+      "Bug reports, ideas, or anything that would make the app more useful for you—we read every message.",
+    messagePlaceholder: "Your thoughts, bugs, ideas…",
+    submitButton: "Submit",
+    sending: "Sending…",
+    successTitle: "Thanks!",
+    successBody: "Your message was sent.",
+    returnToDashboard: "Back to dashboard",
+    sendAnother: "Send another",
   },
   edits: {
-    editClient: "Edit client",
+    editClient: "",
     editProject: "Edit project",
     editIncome: "Edit income",
     editExpense: "Edit expense",
@@ -522,6 +600,23 @@ const es = {
     vatToPayHint:
       "IVA según tu tipo en Ajustes sobre ingresos sin IVA. Actualiza Ajustes si tu régimen es distinto.",
     vatDisabled: "IVA desactivado",
+    exportDataPdf: "Exportar datos (PDF)",
+    exportDataPdfProOnly:
+      "La exportación completa de datos (PDF) está en el plan Pro. Mejora el plan en Ajustes → Facturación para descargarla.",
+    gettingStartedTitle: "Primeros pasos",
+    gettingStartedProgress: "{{done}} de {{total}} completados",
+    gettingStartedAllDoneTitle: "Todo listo",
+    gettingStartedAllDoneBody:
+      "Has completado la lista de configuración. Puedes seguir cambiando lo que necesites en Ajustes.",
+    gettingStartedBaseCurrency: "Configurar moneda base",
+    gettingStartedVat: "Configurar porcentaje de IVA o desactivar IVA",
+    gettingStartedTax: "Configurar porcentaje de impuesto",
+    gettingStartedClient: "Añadir tu primer cliente",
+    gettingStartedProject: "Crear tu primer proyecto",
+    gettingStartedIncome: "Añadir tu primer ingreso",
+    gettingStartedExpense: "Añadir tu primer gasto",
+    gettingStartedInvoice: "Configurar facturación",
+    gettingStartedUpgrade: "Mejorar plan",
   },
   settings: {
     title: "Ajustes",
@@ -542,6 +637,15 @@ const es = {
     baseCurrency: "Moneda base de la cuenta",
     baseCurrencyHint:
       "Los importes guardados e informes usan esta moneda. Al cambiarla se recalculan los valores convertidos.",
+    baseCurrencyWarningTitle: "Antes de cambiar",
+    baseCurrencyWarningBody:
+      "Cambiar la moneda base recalculará todos los datos existentes y puede afectar a informes históricos.",
+    baseCurrencyWarningSubtext:
+      "Recomendamos configurarla una vez al inicio y no cambiarla después.",
+    baseCurrencyConfirmTitle: "¿Cambiar la moneda base?",
+    baseCurrencyConfirmBody: "¿Seguro? Se actualizarán todos los datos anteriores.",
+    baseCurrencyConfirmCancel: "Cancelar",
+    baseCurrencyConfirmContinue: "Continuar",
     comparisonCurrency: "Moneda de conversión aproximada",
     comparisonCurrencyHint:
       "Para la línea \"≈\" junto a importes en otra moneda (un ajuste para toda la app).",
@@ -554,6 +658,7 @@ const es = {
     phone: "Teléfono",
     website: "Sitio web",
     iban: "IBAN",
+    bic: "BIC",
     vatNumber: "NIF-IVA",
     kvk: "Registro mercantil (KvK)",
     address: "Dirección",
@@ -571,6 +676,21 @@ const es = {
     billingProjects: "Proyectos",
     billingClients: "Clientes",
     billingUnlimited: "Ilimitado",
+    billingAiRequests: "Solicitudes de IA (por día)",
+    billingFeatureBusiness: "Funciones de negocio",
+    billingFeatureRateInsights: "Análisis de tarifas",
+    billingFeatureInvoices: "Facturas y PDF",
+    billingFeatureTimer: "Temporizador activo",
+    billingFeatureIncluded: "Incluido",
+    billingFeatureNotIncluded: "No incluido",
+    billingFeatureInvoicesProBadge: "Pro",
+    billingComparePlansHeading: "Comparar planes",
+    billingComparePlansIntro:
+      "Mismos límites que abajo, en paralelo. Tu plan actual coincide con el uso; las otras columnas muestran lo que desbloqueas al mejorar.",
+    billingComparePreviewBadge: "Vista previa",
+    billingCompareYourPlanBadge: "Tu plan",
+    billingCompareRecommendedBadge: "Acceso completo",
+    billingCompareUsageDash: "—",
     billingUpgradeHeading: "Mejorar plan",
     billingManageHeading: "Gestionar o cancelar suscripción",
     billingManageBody:
@@ -590,6 +710,29 @@ const es = {
     invoiceProTeaser:
       "La marca en facturas y los logos en PDF están disponibles en el plan Pro.",
     invoiceProTeaserLink: "Ir a Facturación y suscripción",
+    deleteAccountAccordionTitle: "Eliminar cuenta",
+    deleteAccountTitle: "Eliminar tu cuenta de forma permanente",
+    deleteAccountIntro:
+      "Se elimina tu acceso y todos los datos que guardamos sobre ti en Lead Finance (derecho de supresión del RGPD). No se puede deshacer.",
+    deleteAccountList1:
+      "Registros financieros: ingresos, gastos, horas, kilometraje, facturas y plantillas relacionadas.",
+    deleteAccountList2: "Clientes, proyectos, empresas y tus ajustes (incluido el logo de factura si lo subiste).",
+    deleteAccountList3:
+      "Filas de suscripción y uso en nuestra base de datos; también solicitamos borrar tu cliente de Stripe cuando exista.",
+    deleteAccountList4: "Se cerrará la sesión en cuanto la eliminación termine correctamente.",
+    deleteAccountConfirmLabel: "Confirmación",
+    deleteAccountConfirmHint: "Escribe la palabra DELETE en mayúsculas para confirmar.",
+    deleteAccountButton: "Eliminar mi cuenta de forma permanente",
+    deleteAccountDeleting: "Eliminando cuenta…",
+    deleteAccountErrorConfirm: "La confirmación no coincide. Escribe DELETE en mayúsculas.",
+    deleteAccountErrorNotSignedIn: "No has iniciado sesión.",
+    deleteAccountErrorNotConfigured:
+      "La eliminación de cuenta no está disponible en este servidor (falta configuración del servicio).",
+    deleteAccountErrorInvoice:
+      "No se pudieron limpiar algunos datos vinculados. Ponte en contacto con soporte.",
+    deleteAccountErrorDeleteFailed:
+      "No se pudo eliminar la cuenta. Inténtalo de nuevo o contacta con soporte.",
+    deleteAccountErrorUnknown: "Algo salió mal. Inténtalo más tarde.",
   },
   clients: {
     title: "Clientes",
@@ -634,6 +777,9 @@ const es = {
     tableStatus: "Estado",
     tableDates: "Fechas",
     noProjects: "Aún no hay proyectos.",
+    listPageOf: "Página {current} de {total}",
+    listPrevious: "Anterior",
+    listNext: "Siguiente",
   },
   income: {
     title: "Ingresos",
@@ -665,6 +811,9 @@ const es = {
     recentExpenses: "Gastos recientes",
     category: "Categoría",
     noEntries: "Aún no hay gastos.",
+    addToRegulars: "Añadir a habituales",
+    templateAlready: "Ya guardado como plantilla",
+    templateSave: "Guardar como plantilla",
   },
   hours: {
     title: "Horas",
@@ -724,6 +873,16 @@ const es = {
     loadError:
       "No se pudieron cargar los comentarios. Revisa las políticas de la base de datos y el correo de administrador.",
     empty: "Aún no hay comentarios.",
+    submitTitle: "Enviar comentarios",
+    submitSubtitle:
+      "Informes de errores, ideas o cualquier cosa que haga la app más útil para ti—leemos todos los mensajes.",
+    messagePlaceholder: "Tus ideas, errores, sugerencias…",
+    submitButton: "Enviar",
+    sending: "Enviando…",
+    successTitle: "¡Gracias!",
+    successBody: "Tu mensaje se ha enviado.",
+    returnToDashboard: "Volver al panel",
+    sendAnother: "Enviar otro",
   },
   edits: {
     editClient: "Editar cliente",
