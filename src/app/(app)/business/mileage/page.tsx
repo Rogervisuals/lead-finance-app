@@ -402,7 +402,9 @@ export default async function MileagePage({
           <MileageQuickTemplateButtons templates={(templates ?? []) as any} />
         ) : (
           <div className="text-sm text-zinc-500">
-            No templates yet. Use "+" on a mileage row to save one.
+            <p>
+  No templates yet. Use {"+"} on a mileage row to save one.
+</p>
           </div>
         )}
         <p className="mt-2 text-xs text-zinc-500">
