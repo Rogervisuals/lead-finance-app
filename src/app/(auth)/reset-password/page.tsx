@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createSupabaseBrowserClient, getBrowserSessionOnce } from "@/lib/supabase/client";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { AuthChangeEvent, Session } from "@supabase/supabase-js";
 
 function normalizeAuthError(message: string): string {
   const m = message.toLowerCase();
@@ -24,109 +25,68 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
-
+  
     const syncRecoverySessionState = async () => {
-      const { data } = await getBrowserSessionOnce();
+      const { data } = await supabase.auth.getSession();
       const session = data.session;
-      setIsRecoverySession(Boolean(session));
+      setIsRecoverySession(!!session);
       setRecoveryEmail(session?.user?.email ?? "");
-      return Boolean(session);
+      return !!session;
     };
-
+  
     const clearUrlTokens = () => {
       window.history.replaceState({}, document.title, "/reset-password");
     };
-
+  
     const applyRecoveryHash = async (): Promise<boolean> => {
       const hash = window.location.hash.replace(/^#/, "");
       const params = new URLSearchParams(hash);
       const type = params.get("type");
       const accessToken = params.get("access_token");
       const refreshToken = params.get("refresh_token");
+  
       if (type !== "recovery" || !accessToken || !refreshToken) return false;
-
+  
       const { error } = await supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
       });
+  
       if (error) return false;
-
+  
       const ok = await syncRecoverySessionState();
-      if (ok) {
-        clearUrlTokens();
-      }
+      if (ok) clearUrlTokens();
+  
       return ok;
     };
-
-    const applyRecoveryCode = async (): Promise<boolean> => {
-      const params = new URLSearchParams(window.location.search);
-      const type = params.get("type");
-      const code = params.get("code");
-      if (type !== "recovery" || !code) return false;
-
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) return false;
-
-      const ok = await syncRecoverySessionState();
-      if (ok) {
-        clearUrlTokens();
-      }
-      return ok;
-    };
-
-    const applyRecoveryTokenHash = async (): Promise<boolean> => {
-      const params = new URLSearchParams(window.location.search);
-      const type = params.get("type");
-      const tokenHash = params.get("token_hash");
-      if (type !== "recovery" || !tokenHash) return false;
-
-      const { error } = await supabase.auth.verifyOtp({
-        type: "recovery",
-        token_hash: tokenHash,
-      });
-      if (error) return false;
-
-      const ok = await syncRecoverySessionState();
-      if (ok) {
-        clearUrlTokens();
-      }
-      return ok;
-    };
-
+  
     void (async () => {
-      const hash = window.location.hash.replace(/^#/, "");
-      const search = new URLSearchParams(window.location.search);
-      const hasRecoveryTokens =
-        (hash.includes("type=recovery") && hash.includes("access_token=")) ||
-        (search.get("type") === "recovery" &&
-          (Boolean(search.get("code")) || Boolean(search.get("token_hash"))));
-
-      // If we are opening a recovery link, ensure any existing session does not override it.
-      if (hasRecoveryTokens) {
-        await supabase.auth.signOut({ scope: "local" });
-      }
-
-      let recovered = false;
-      if (hasRecoveryTokens) {
-        recovered = await applyRecoveryHash();
-        if (!recovered) recovered = await applyRecoveryCode();
-        if (!recovered) recovered = await applyRecoveryTokenHash();
-      }
-
+      let recovered = await applyRecoveryHash();
+  
       if (!recovered) {
-        // Do not treat a normal logged-in session as a recovery session.
         setIsRecoverySession(false);
         setRecoveryEmail("");
       }
     })();
+  }, []);
 
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-        setIsRecoverySession(Boolean(session));
-        setRecoveryEmail(session?.user?.email ?? "");
+
+    
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+  
+    const { data: sub } = supabase.auth.onAuthStateChange(
+      (event: AuthChangeEvent, session: Session | null) => {
+        if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
+          setIsRecoverySession(!!session);
+          setRecoveryEmail(session?.user?.email ?? "");
+        }
       }
-    });
-    return () => sub.subscription.unsubscribe();
+    );
+  
+    return () => {
+      sub?.subscription?.unsubscribe();
+    };
   }, []);
 
   async function onSendReset(e: React.FormEvent) {
@@ -162,7 +122,7 @@ export default function ResetPasswordPage() {
     setSaveLoading(true);
 
     const supabase = createSupabaseBrowserClient();
-    const { data: sessionData } = await getBrowserSessionOnce();
+    const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
       setError("Recovery session expired. Request a new reset link and try again.");
       setSaveLoading(false);
