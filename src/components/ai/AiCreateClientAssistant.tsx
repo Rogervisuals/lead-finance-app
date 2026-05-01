@@ -2101,6 +2101,10 @@ export function AiCreateClientAssistant({
         );
       }
     } else {
+      if (!("company_name" in aiPayload)) {
+        throw new Error("Company name missing in response");
+      }
+      
       const rawCompanyName = aiPayload.company_name.trim();
       if (!rawCompanyName) throw new Error("Company name is required");
       const companyName =
