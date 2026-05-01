@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { createSupabaseBrowserClient, getBrowserSessionOnce } from "@/lib/supabase/client";
 
 function parseAuthParams(href: string) {
   const url = new URL(href);
@@ -52,7 +52,7 @@ export function AuthCallbackHandler() {
 
     void (async () => {
       const supabase = createSupabaseBrowserClient();
-      await supabase.auth.getSession();
+      await getBrowserSessionOnce();
 
       const { type, code, tokenHash, accessToken, refreshToken } =
         parseAuthParams(window.location.href);

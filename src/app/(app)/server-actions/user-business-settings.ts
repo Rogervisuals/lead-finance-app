@@ -40,7 +40,6 @@ export async function saveUnifiedSettingsAction(formData: FormData) {
 
   const returnTo = String(formData.get("return_to") ?? "/settings").trim() || "/settings";
   const businessName = toNullText(formData.get("business_name"));
-  if (!businessName) redirectWithQuery(returnTo, "error", "business_name");
 
   const vatEnabled = readBooleanCheckbox(formData, "vat_enabled");
   const vatPercentage = Number(String(formData.get("vat_percentage") ?? "21").trim());
@@ -105,7 +104,6 @@ export async function saveBusinessSettingsAction(formData: FormData) {
 
   const returnTo = String(formData.get("return_to") ?? "/settings").trim() || "/settings";
   const businessName = toNullText(formData.get("business_name"));
-  if (!businessName) redirectWithQuery(returnTo, "error", "business_name");
 
   await supabase
     .from("user_settings")

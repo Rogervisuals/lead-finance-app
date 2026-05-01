@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import type { ActiveTimerRow } from "@/lib/active-timer";
 import {
@@ -100,8 +100,10 @@ export function ActiveTimerNav({
   canUseTimer?: boolean;
   timerUpgradeMessage?: string;
 }) {
+  const router = useRouter();
   const pathname = usePathname();
   const [returnTo, setReturnTo] = useState(() => pathname || "/dashboard");
+  const [timerPending, startTimerTransition] = useTransition();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -160,6 +162,28 @@ export function ActiveTimerNav({
     setOpen(true);
   }
 
+  function handleStartTimer(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    startTimerTransition(async () => {
+      const fd = new FormData(form);
+      await startActiveTimerAction(fd);
+      router.refresh();
+      setOpen(false);
+    });
+  }
+
+  function handleStopTimer(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    startTimerTransition(async () => {
+      const fd = new FormData(form);
+      await stopActiveTimerAction(fd);
+      router.refresh();
+      setOpen(false);
+    });
+  }
+
   return (
     <>
       <div className="flex min-h-9 min-w-0 items-center gap-2">
@@ -176,7 +200,7 @@ export function ActiveTimerNav({
             <button
               type="button"
               onClick={openModal}
-              className="hidden max-w-[min(100%,18rem)] truncate rounded-md border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-950/50 sm:inline-flex sm:items-center"
+              className="hidden min-w-0 shrink max-w-[10rem] truncate rounded-md border border-emerald-900/50 bg-emerald-950/30 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-950/50 sm:inline-flex sm:items-center md:max-w-[12rem] lg:max-w-[18rem]"
               title="Timer running — click to manage"
             >
               🟢{" "}
@@ -205,7 +229,9 @@ export function ActiveTimerNav({
                 data-timer-backdrop
                 className="absolute inset-0 bg-zinc-950/75"
                 aria-label="Close"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  if (!timerPending) setOpen(false);
+                }}
               />
               <div
                 role="dialog"
@@ -225,7 +251,8 @@ export function ActiveTimerNav({
                     type="button"
                     data-timer-close
                     onClick={() => setOpen(false)}
-                    className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-950/60"
+                    disabled={timerPending}
+                    className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-950/60 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Close
                   </button>
@@ -265,18 +292,19 @@ export function ActiveTimerNav({
                         </div>
                       </div>
                     ) : null}
-                    <form action={stopActiveTimerAction}>
+                    <form onSubmit={handleStopTimer}>
                       <input type="hidden" name="return_to" value={returnTo} />
                       <button
                         type="submit"
-                        className="w-full rounded-md border border-rose-900/50 bg-rose-950/30 px-3 py-2.5 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-950/50 active:bg-rose-950/70"
+                        disabled={timerPending}
+                        className="w-full rounded-md border border-rose-900/50 bg-rose-950/30 px-3 py-2.5 text-sm font-medium text-rose-200 transition-colors hover:bg-rose-950/50 active:bg-rose-950/70 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Stop timer
+                        {timerPending ? "Stopping…" : "Stop timer"}
                       </button>
                     </form>
                   </div>
                 ) : canUseTimer ? (
-                  <form action={startActiveTimerAction} className="grid gap-4">
+                  <form onSubmit={handleStartTimer} className="grid gap-4">
                     <input type="hidden" name="return_to" value={returnTo} />
                     <label className="space-y-1.5">
                       <span className="text-sm font-medium text-zinc-400">
@@ -289,7 +317,7 @@ export function ActiveTimerNav({
                         value={clientId}
                         onChange={(e) => setClientId(e.target.value)}
                         className="[color-scheme:dark] w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/25 disabled:opacity-50"
-                        disabled={!clients.length}
+                        disabled={!clients.length || timerPending}
                       >
                         {clients.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -305,9 +333,10 @@ export function ActiveTimerNav({
                       <select
                         name="project_id"
                         data-timer-field
-                        className="[color-scheme:dark] w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/25"
+                        className="[color-scheme:dark] w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/25 disabled:opacity-50"
                         defaultValue=""
                         key={clientId}
+                        disabled={timerPending}
                       >
                         <option value="">No project</option>
                         {filteredProjects.map((p) => (
@@ -331,16 +360,17 @@ export function ActiveTimerNav({
                         name="notes"
                         rows={3}
                         data-timer-field
-                        className="placeholder:text-zinc-500 [color-scheme:dark] w-full resize-none rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/25"
+                        className="placeholder:text-zinc-500 [color-scheme:dark] w-full resize-none rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/25 disabled:opacity-50"
                         placeholder="What are you working on?"
+                        disabled={timerPending}
                       />
                     </label>
                     <button
                       type="submit"
-                      disabled={!clients.length}
-                      className="mt-1 rounded-md bg-sky-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-sky-500 active:bg-sky-700 disabled:opacity-50"
+                      disabled={!clients.length || timerPending}
+                      className="mt-1 rounded-md bg-sky-600 px-3 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-sky-500 active:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Start timer
+                      {timerPending ? "Starting…" : "Start timer"}
                     </button>
                   </form>
                 ) : (

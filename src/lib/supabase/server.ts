@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as
   | string
@@ -54,6 +55,13 @@ export function createSupabaseServerClient() {
 }
 
 /**
+ * Request-scoped cached server client (RSC/cache is per-request).
+ * Prevents duplicated client creation + duplicated refresh work when multiple
+ * server components call into auth in the same render.
+ */
+export const getSupabaseServerClient = cache(() => createSupabaseServerClient());
+
+/**
  * Server Actions — cookie store is mutable; writes must succeed for auth refresh.
  */
 export function createSupabaseServerActionClient() {
@@ -82,13 +90,21 @@ export function createSupabaseServerActionClient() {
   });
 }
 
-export async function getUserOrNull() {
-  const supabase = createSupabaseServerClient();
+export const getUserOrNull = cache(async () => {
+  const supabase = getSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return user ?? null;
-}
+});
+
+export const getServerAuth = cache(async () => {
+  const supabase = getSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return { supabase, user: user ?? null };
+});
 
 /**
  * Server-only: bypasses RLS. Use for trusted server tasks with no user session

@@ -133,12 +133,12 @@ const en = {
     expensesMonth: "Expenses (month)",
     expensesMonthHint: "Sum of project expenses entries.",
     estimatedTax: "Estimated tax",
-    estimatedTaxIntro: "All combined tax from",
-    estimatedTaxLinkCompany: "company",
-    estimatedTaxAnd: "and",
-    estimatedTaxLinkClient: "client",
+    estimatedTaxIntro: "Tax estimate is",
+    estimatedTaxLinkCompany: "",
+    estimatedTaxAnd: "",
+    estimatedTaxLinkClient: "",
     estimatedTaxRest:
-      "pages (for this period): company = % on linked income; client = % on net income (income − expenses) when that client is not under a company that already has tax on.",
+      "your tax % applied to net (income − expenses) for this period. Negative net counts as 0.",
     safeToSpend: "Safe to spend",
     safeToSpendHint: "Net for the period minus estimated tax.",
     insights: "Insights",
@@ -274,7 +274,7 @@ const en = {
     deleteAccountAccordionTitle: "Delete account",
     deleteAccountTitle: "Permanently delete your account",
     deleteAccountIntro:
-      "This removes your login and all data we hold for you in Lead Finance (GDPR right to erasure). This cannot be undone.",
+      "This removes your login and all data we hold for you in Zarlo (GDPR right to erasure). This cannot be undone.",
     deleteAccountList1: "Financial records: income, expenses, hours, mileage, invoices, and related templates.",
     deleteAccountList2: "Clients, projects, companies, and your settings (including any uploaded invoice logo).",
     deleteAccountList3: "Subscription and usage rows in our database; we also request deletion of your Stripe customer record when one exists.",
@@ -311,6 +311,10 @@ const en = {
     clientLimitBanner:
       "You have reached the client limit for your plan. Delete a client or upgrade to add more.",
     clientCountError: "Could not verify your client count. Try again.",
+    addedSuccess: "Client has been added.",
+    listPageOf: "Page {current} of {total}",
+    listPrevious: "Previous",
+    listNext: "Next",
   },
   projects: {
     title: "Projects",
@@ -337,6 +341,7 @@ const en = {
     listPageOf: "Page {current} of {total}",
     listPrevious: "Previous",
     listNext: "Next",
+    addedSuccess: "Project has been added.",
   },
   income: {
     title: "Income",
@@ -358,6 +363,7 @@ const en = {
     templateAlready: "Already saved as a quick template",
     templateSave: "Save as quick template",
     noEntries: "No income entries yet.",
+    addedSuccess: "Income has been added.",
   },
   expenses: {
     title: "Expenses",
@@ -371,6 +377,7 @@ const en = {
     addToRegulars: "+",
     templateAlready: "Already saved as a quick template",
     templateSave: "Save as quick template",
+    addedSuccess: "Expense has been added.",
   },
   hours: {
     title: "Hours",
@@ -573,12 +580,12 @@ const es = {
     expensesMonth: "Gastos (mes)",
     expensesMonthHint: "Suma de gastos de proyecto.",
     estimatedTax: "Impuesto estimado",
-    estimatedTaxIntro: "Impuestos combinados según",
-    estimatedTaxLinkCompany: "empresa",
-    estimatedTaxAnd: "y",
-    estimatedTaxLinkClient: "cliente",
+    estimatedTaxIntro: "El impuesto estimado es",
+    estimatedTaxLinkCompany: "",
+    estimatedTaxAnd: "",
+    estimatedTaxLinkClient: "",
     estimatedTaxRest:
-      "(en este periodo): empresa = % sobre ingresos vinculados; cliente = % sobre neto (ingresos − gastos) si el cliente no está bajo una empresa que ya tenga impuesto.",
+      "tu % aplicado al neto (ingresos − gastos) de este periodo. Si el neto es negativo, cuenta como 0.",
     safeToSpend: "Disponible",
     safeToSpendHint: "Neto del periodo menos impuesto estimado.",
     insights: "Resumen",
@@ -713,7 +720,7 @@ const es = {
     deleteAccountAccordionTitle: "Eliminar cuenta",
     deleteAccountTitle: "Eliminar tu cuenta de forma permanente",
     deleteAccountIntro:
-      "Se elimina tu acceso y todos los datos que guardamos sobre ti en Lead Finance (derecho de supresión del RGPD). No se puede deshacer.",
+      "Se elimina tu acceso y todos los datos que guardamos sobre ti en Zarlo (derecho de supresión del RGPD). No se puede deshacer.",
     deleteAccountList1:
       "Registros financieros: ingresos, gastos, horas, kilometraje, facturas y plantillas relacionadas.",
     deleteAccountList2: "Clientes, proyectos, empresas y tus ajustes (incluido el logo de factura si lo subiste).",
@@ -754,6 +761,10 @@ const es = {
     clientLimitBanner:
       "Has alcanzado el límite de clientes de tu plan. Elimina un cliente o mejora el plan para añadir más.",
     clientCountError: "No se pudo comprobar el número de clientes. Inténtalo de nuevo.",
+    addedSuccess: "Se ha añadido el cliente.",
+    listPageOf: "Página {current} de {total}",
+    listPrevious: "Anterior",
+    listNext: "Siguiente",
   },
   projects: {
     title: "Proyectos",
@@ -780,6 +791,7 @@ const es = {
     listPageOf: "Página {current} de {total}",
     listPrevious: "Anterior",
     listNext: "Siguiente",
+    addedSuccess: "Se ha añadido el proyecto.",
   },
   income: {
     title: "Ingresos",
@@ -801,6 +813,7 @@ const es = {
     templateAlready: "Ya guardado como plantilla",
     templateSave: "Guardar como plantilla",
     noEntries: "Aún no hay ingresos.",
+    addedSuccess: "Se ha añadido el ingreso.",
   },
   expenses: {
     title: "Gastos",
@@ -814,6 +827,7 @@ const es = {
     addToRegulars: "Añadir a habituales",
     templateAlready: "Ya guardado como plantilla",
     templateSave: "Guardar como plantilla",
+    addedSuccess: "Se ha añadido el gasto.",
   },
   hours: {
     title: "Horas",

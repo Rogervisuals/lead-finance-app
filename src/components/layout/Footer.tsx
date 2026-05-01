@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import type { FullUi } from "@/lib/i18n/get-ui";
 
 const linkClass =
@@ -16,12 +15,22 @@ export function Footer({ footer }: { footer: FullUi["footer"] }) {
           <a href="mailto:business@rogervisuals.com" className={linkClass}>
             {footer.contact}
           </a>
-          <Link href="/privacy" className={linkClass}>
+          <a
+            href="/privacy"
+            className={linkClass}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             {footer.privacy}
-          </Link>
-          <Link href="/terms" className={linkClass}>
+          </a>
+          <a
+            href="/terms"
+            className={linkClass}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             {footer.terms}
-          </Link>
+          </a>
         </nav>
       </div>
     </footer>

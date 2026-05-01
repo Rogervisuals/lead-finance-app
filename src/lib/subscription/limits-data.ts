@@ -1,19 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  canCreateClient,
-  canCreateProject,
-  getAiDailyCap,
-  hasAccess,
-} from "@/lib/permissions";
+import { canCreateClient, canCreateProject, getAiDailyCap, hasAccess } from "@/lib/permissions";
 import type { PlanId } from "@/lib/subscription/types";
-
-function todayIsoDate(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 export type SubscriptionLimitsPayload = {
   plan: PlanId;
@@ -41,7 +28,6 @@ export async function fetchSubscriptionLimitsPayload(
   | { ok: true; data: SubscriptionLimitsPayload }
   | { ok: false; error: "projects" | "clients" }
 > {
-  const usageDate = todayIsoDate();
   const [projectsRes, clientsRes, aiUsageRes] = await Promise.all([
     supabase
       .from("projects")
@@ -53,9 +39,8 @@ export async function fetchSubscriptionLimitsPayload(
       .eq("user_id", userId),
     supabase
       .from("user_ai_usage")
-      .select("requests_count")
+      .select("daily_requests")
       .eq("user_id", userId)
-      .eq("date", usageDate)
       .maybeSingle(),
   ]);
 
@@ -75,7 +60,7 @@ export async function fetchSubscriptionLimitsPayload(
   let aiUsedToday = 0;
   if (!aiUsageRes.error && aiDailyCap > 0) {
     aiUsedToday = Number(
-      (aiUsageRes.data as { requests_count?: unknown } | null)?.requests_count ?? 0
+      (aiUsageRes.data as { daily_requests?: unknown } | null)?.daily_requests ?? 0
     );
   }
 

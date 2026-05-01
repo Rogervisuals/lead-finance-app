@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { getUserOrNull, createSupabaseServerClient } from "@/lib/supabase/server";
+import { getServerAuth } from "@/lib/supabase/server";
 import { THEME_COOKIE_NAME, type ThemeMode } from "@/lib/theme";
 import { getNavbarDisplayLabel } from "@/lib/auth-display-name";
 import { isAdminUser } from "@/lib/admin";
@@ -26,7 +26,7 @@ import { showSendFeedbackNavLink } from "@/lib/nav-feedback";
 const ENABLE_LINK_PREFETCH = process.env.NODE_ENV === "production";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const user = await getUserOrNull();
+  const { supabase, user } = await getServerAuth();
   if (!user) redirect("/login");
 
   const cookieTheme = cookies().get(THEME_COOKIE_NAME)?.value;
@@ -38,8 +38,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const displayName = getNavbarDisplayLabel(user);
   const admin = isAdminUser(user.email);
   const sendFeedbackInNav = showSendFeedbackNavLink(user.id, displayName);
-
-  const supabase = createSupabaseServerClient();
 
   const [plan, financial, initialTimer, clientsRes, projectsRes] = await Promise.all([
     ensureSubscriptionAndGetPlan(supabase, user.id),
@@ -70,17 +68,18 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               <Link
                 href="/dashboard"
                 prefetch={ENABLE_LINK_PREFETCH}
-                className="text-sm font-semibold text-sky-300 transition-colors hover:text-sky-200"
+                className="flex items-center gap-1 text-sm font-regular text-zinc-50 transition-colors hover:text-zinc-200"
               >
-                Lead Finance
+                {/* Use SVG to preserve transparency across themes */}
+                <img
+                  src="/brand/zarlo-logo.svg"
+                  alt="Zarlo"
+                  width={28}
+                  height={28}
+                  className="h-7 w-7"
+                />
+                <span aria-label="Zarlo">arlo</span>
               </Link>
-              {/* Debug: real plan from DB (subscriptions.plan); remove or gate when stable */}
-              <span
-                className="text-[10px] font-medium uppercase tracking-wide text-zinc-600"
-                title="Current subscription plan from database"
-              >
-                Plan: {plan}
-              </span>
             </div>
             <nav className="hidden gap-3 md:flex">
               <NavItem href="/dashboard">{ui.nav.dashboard}</NavItem>
@@ -131,6 +130,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             />
             <WelcomeUserMenu
               displayName={displayName}
+              plan={plan}
               serverTheme={serverTheme}
               showAdminFeedback={admin}
               showSendFeedback={sendFeedbackInNav}

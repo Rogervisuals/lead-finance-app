@@ -14,7 +14,7 @@ import { canExportDataPdf } from "@/lib/permissions";
 export const runtime = "nodejs";
 
 function safeFilenamePart(s: string) {
-  return s.replace(/[^\w\-]+/g, "_").slice(0, 80);
+  return s.replace(/[^\w\-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
 
 export async function GET(request: Request) {
@@ -59,13 +59,17 @@ export async function GET(request: Request) {
     baseCurrency: financialSettings.base_currency,
     reportingPeriodLabel: meta.label,
     exportDate: new Date(),
+    taxPercentage: financialSettings.tax_percentage,
+    vatEnabled: financialSettings.vat_enabled,
+    vatPercentage: financialSettings.vat_percentage,
   });
 
   // @ts-expect-error react-pdf renderToBuffer typings expect <Document>; TaxReportDocument renders Document.
   const buffer = await renderToBuffer(createElement(TaxReportDocument, { data: payload }));
 
-  const stamp = safeFilenamePart(now.toISOString().slice(0, 10));
-  const filename = `tax-report_${stamp}.pdf`;
+  const safeName = safeFilenamePart(businessName || "User") || "User";
+  const safePeriod = safeFilenamePart(meta.label || "All") || "All";
+  const filename = `FinancialReport-${safeName}-${safePeriod}.pdf`;
 
   return new NextResponse(new Uint8Array(buffer), {
     status: 200,

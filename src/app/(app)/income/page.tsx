@@ -48,7 +48,7 @@ function incomeMatchesTemplate(
 export default async function IncomePage({
   searchParams,
 }: {
-  searchParams?: { template_error?: string; error?: string; client?: string };
+  searchParams?: { template_error?: string; error?: string; client?: string; added?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -123,6 +123,11 @@ export default async function IncomePage({
           {ui.income.subtitle}
         </p>
       </div>
+      {searchParams?.added === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.income.addedSuccess}
+        </div>
+      ) : null}
 {/*}
       <section className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-xl border border-emerald-900/50 bg-zinc-900/20 p-4 lg:p-5">

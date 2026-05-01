@@ -52,7 +52,7 @@ export async function createProjectAction(formData: FormData) {
     end_date,
   });
 
-  redirect("/projects");
+  redirect("/projects?added=1");
 }
 
 export async function updateProjectAction(formData: FormData) {

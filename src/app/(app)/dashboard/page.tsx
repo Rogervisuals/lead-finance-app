@@ -11,7 +11,7 @@ import {
 import { StatCard } from "@/components/display/StatCard";
 import { DashboardBlockHint } from "@/components/dashboard/DashboardBlockHint";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
-import { sumDashboardEstimatedTax } from "@/lib/finance/company-tax";
+import { roundMoney } from "@/lib/finance/company-tax";
 import { getServerLocale } from "@/lib/i18n/server";
 import { getUi } from "@/lib/i18n/get-ui";
 import type { Locale } from "@/lib/i18n/locale";
@@ -107,32 +107,17 @@ export default async function DashboardPage({
   const isoEndExclusive = monthEndExclusive ? toISODateOnly(monthEndExclusive) : null;
   const isoEndInclusive = isoEndExclusive;
 
-  // Start tax calculation early so it can run in parallel with the main dashboard queries.
-  // This preserves behavior (same inputs / same result) but removes a waterfall.
-  const estimatedTaxPromise = sumDashboardEstimatedTax(
-    supabase,
-    userId,
-    settings.tax_percentage,
-    kind === "all"
-      ? { kind: "all" }
-      : {
-          kind: "month",
-          startIso: isoStart!,
-          endExclusiveIso: isoEndExclusive!,
-        }
-  );
-
   const [
     { data: clients },
     { data: projects },
     { data: incomeMonthSumRows },
     { data: expensesMonthSumRows },
+    { data: businessExpensesMonthSumRows },
     { data: incomeRecentRows },
     { data: expenseRecentRows },
     { data: hoursRows },
     { data: incomeAllRows },
     { data: hoursAllRows },
-    estimatedTax,
   ] = await Promise.all([
     supabase
       .from("clients")
@@ -163,6 +148,17 @@ export default async function DashboardPage({
       : supabase
           .from("expenses")
           .select("amount_converted", { count: "exact", head: false })
+          .eq("user_id", userId)
+          .gte("date", isoStart!)
+          .lte("date", isoEndInclusive!)) as any,
+    (kind === "all"
+      ? supabase
+          .from("business_expenses")
+          .select("amount", { count: "exact", head: false })
+          .eq("user_id", userId)
+      : supabase
+          .from("business_expenses")
+          .select("amount", { count: "exact", head: false })
           .eq("user_id", userId)
           .gte("date", isoStart!)
           .lte("date", isoEndInclusive!)) as any,
@@ -225,7 +221,6 @@ export default async function DashboardPage({
       .select("hours,project_id,client_id")
       .eq("user_id", userId)
       .limit(1000),
-    estimatedTaxPromise,
   ]);
 
   const clientById = new Map((clients ?? []).map((c) => [c.id, c]));
@@ -236,10 +231,17 @@ export default async function DashboardPage({
     0
   );
 
-  const expensesMonth = (expensesMonthSumRows ?? []).reduce(
+  const projectExpensesMonth = (expensesMonthSumRows ?? []).reduce(
     (acc: number, row: any) => acc + Number(row?.amount_converted ?? 0),
     0
   );
+
+  const generalExpensesMonth = (businessExpensesMonthSumRows ?? []).reduce(
+    (acc: number, row: any) => acc + Number(row?.amount ?? 0),
+    0
+  );
+
+  const expensesMonth = projectExpensesMonth + generalExpensesMonth;
 
   const projectToClient = new Map<string, string>(
     (projects ?? []).map((p: any) => [p.id, p.client_id])
@@ -320,6 +322,9 @@ export default async function DashboardPage({
   // Simplified model: income values are EX VAT.
   const incomeExclVat = incomeMonth;
   const netMonth = incomeExclVat - expensesMonth;
+  const estimatedTax = roundMoney(
+    Math.max(0, netMonth) * (settings.tax_percentage / 100)
+  );
   const safeToSpend = netMonth - estimatedTax;
   const incomeInclVat = vatEnabled
     ? incomeExclVat * (1 + vatRate)
@@ -377,10 +382,18 @@ export default async function DashboardPage({
     };
   });
 
-  const taxReportPdfHref =
+  const exportRangeOptions = [
+    { value: "all", label: ui.dashboard.rangeAllTime },
+    ...yearOptions,
+    ...monthOptions,
+  ];
+
+  const exportInitialRange =
     searchParams?.range != null && searchParams.range !== ""
-      ? `/api/tax-report-pdf?range=${encodeURIComponent(searchParams.range)}`
-      : "/api/tax-report-pdf";
+      ? searchParams.range
+      : `month-${year}-${String(monthIndex0 + 1).padStart(2, "0")}`;
+  const exportBusinessName =
+    checklistRow?.business_name?.trim() || user.email || "User";
 
   return (
     <div className="min-w-0 space-y-6">
@@ -434,10 +447,18 @@ export default async function DashboardPage({
         </div>
         <div className="flex w-full flex-col items-center justify-center gap-2 sm:flex-row md:w-auto md:justify-end">
           <DashboardDataExportPdfControl
-            href={taxReportPdfHref}
+            pdfBaseHref="/api/tax-report-pdf"
             canExport={exportDataPdf}
             label={ui.dashboard.exportDataPdf}
             lockedTitle={ui.dashboard.exportDataPdfProOnly}
+            title="Export your data"
+            rangeLabel="Select period"
+            formatLabel="Format"
+            exportLabel="Export Data (PDF)"
+            helpText="Your export will be ready in seconds."
+            rangeOptions={exportRangeOptions}
+            initialRangeValue={exportInitialRange}
+            businessName={exportBusinessName}
           />
           <form method="get" action="/dashboard" className="flex gap-2">
             <select
@@ -542,15 +563,7 @@ export default async function DashboardPage({
               </div>
               <DashboardBlockHint>
                 <p>
-                  {ui.dashboard.estimatedTaxIntro}{" "}
-                  <Link href="/companies" className="text-sky-400 hover:underline">
-                    {ui.dashboard.estimatedTaxLinkCompany}
-                  </Link>{" "}
-                  {ui.dashboard.estimatedTaxAnd}{" "}
-                  <Link href="/clients" className="text-sky-400 hover:underline">
-                    {ui.dashboard.estimatedTaxLinkClient}
-                  </Link>{" "}
-                  {ui.dashboard.estimatedTaxRest}
+                  {ui.dashboard.estimatedTaxIntro} {ui.dashboard.estimatedTaxRest}
                 </p>
               </DashboardBlockHint>
             </div>

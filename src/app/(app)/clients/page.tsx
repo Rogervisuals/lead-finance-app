@@ -17,10 +17,20 @@ import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
 
 export const dynamic = "force-dynamic";
 
+const EXISTING_CLIENTS_PAGE_SIZE = 15;
+
+function clientsListHref(opts: { page: number; error?: string }) {
+  const params = new URLSearchParams();
+  if (opts.error) params.set("error", opts.error);
+  if (opts.page > 1) params.set("page", String(opts.page));
+  const q = params.toString();
+  return q ? `/clients?${q}` : "/clients";
+}
+
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams?: { error?: string; added?: string; page?: string };
 }) {
   const ui = getUi(getServerLocale());
   const supabase = createSupabaseServerClient();
@@ -51,6 +61,18 @@ export default async function ClientsPage({
   const showLimitError =
     searchParams?.error === "client_limit" || searchParams?.error === "client_count";
 
+  const pageRaw = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
+  const totalListPages = Math.max(1, Math.ceil(clientCount / EXISTING_CLIENTS_PAGE_SIZE));
+  const clientsListPage = Math.min(Math.max(1, pageRaw), totalListPages);
+  const listFrom = (clientsListPage - 1) * EXISTING_CLIENTS_PAGE_SIZE;
+  const pagedClients = (clients ?? []).slice(listFrom, listFrom + EXISTING_CLIENTS_PAGE_SIZE);
+
+  const listHref = (page: number) =>
+    clientsListHref({
+      page,
+      error: searchParams?.error,
+    });
+
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-3">
@@ -64,6 +86,12 @@ export default async function ClientsPage({
           </p>
         </div>
       </div>
+
+      {searchParams?.added === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.clients.addedSuccess}
+        </div>
+      ) : null}
 
       {showLimitError ? (
         <div
@@ -167,70 +195,109 @@ export default async function ClientsPage({
           {ui.clients.existingTitle}
         </h2>
         {clients?.length ? (
-          <div className="min-w-0 max-w-full overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-zinc-500">
-                <tr>
-                  <th className="py-2">{ui.table.name}</th>
-                  <th className="py-2">{ui.table.email}</th>
-                  <th className="py-2">{ui.table.company}</th>
-                  <th className="py-2">{ui.table.notes}</th>
-                  <th className="py-2 text-right">{ui.table.actions}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {clients.map((c: any) => (
-                  <tr key={c.id}>
-                    <td className="py-2">
-                      <Link
-                        href={`/clients/${c.id}`}
-                        className="text-zinc-200 hover:underline"
-                      >
-                        {c.name}
-                      </Link>
-                    </td>
-                    <td className="py-2 text-zinc-400">{c.email ?? "—"}</td>
-                    <td className="py-2 text-zinc-400">
-                      {hasCompanyLink && c.company_id ? (
+          <>
+            <div className="min-w-0 max-w-full overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-zinc-500">
+                  <tr>
+                    <th className="py-2">{ui.table.name}</th>
+                    <th className="py-2">{ui.table.email}</th>
+                    <th className="py-2">{ui.table.company}</th>
+                    <th className="py-2">{ui.table.notes}</th>
+                    <th className="py-2 text-right">{ui.table.actions}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {pagedClients.map((c: any) => (
+                    <tr key={c.id}>
+                      <td className="py-2">
                         <Link
-                          href={`/companies/${c.company_id}`}
-                          className="text-sky-300 hover:underline"
+                          href={`/clients/${c.id}`}
+                          className="text-zinc-200 hover:underline"
                         >
-                          {companyNameById.get(c.company_id) ?? ui.common.company}
+                          {c.name}
                         </Link>
-                      ) : c.company ? (
-                        <span>{c.company}</span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="py-2 text-zinc-400">
-                      {c.notes ?? "—"}
-                    </td>
-                    <td className="py-2 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Link
-                          href={`/clients/${c.id}/edit`}
-                          className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
-                        >
-                          <EditLabel>{ui.common.edit}</EditLabel>
-                        </Link>
-                        <form action={deleteClientAction}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <button
-                            type="submit"
+                      </td>
+                      <td className="py-2 text-zinc-400">{c.email ?? "—"}</td>
+                      <td className="py-2 text-zinc-400">
+                        {hasCompanyLink && c.company_id ? (
+                          <Link
+                            href={`/companies/${c.company_id}`}
+                            className="text-sky-300 hover:underline"
+                          >
+                            {companyNameById.get(c.company_id) ?? ui.common.company}
+                          </Link>
+                        ) : c.company ? (
+                          <span>{c.company}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="py-2 text-zinc-400">
+                        {c.notes ?? "—"}
+                      </td>
+                      <td className="py-2 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Link
+                            href={`/clients/${c.id}/edit`}
                             className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
                           >
-                            <DeleteLabel>{ui.common.delete}</DeleteLabel>
-                          </button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                            <EditLabel>{ui.common.edit}</EditLabel>
+                          </Link>
+                          <form action={deleteClientAction}>
+                            <input type="hidden" name="id" value={c.id} />
+                            <button
+                              type="submit"
+                              className="rounded-md border border-zinc-800 bg-zinc-950/20 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-950/40"
+                            >
+                              <DeleteLabel>{ui.common.delete}</DeleteLabel>
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {totalListPages > 1 ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800 pt-4">
+                <div className="text-xs text-zinc-500">
+                  {ui.clients.listPageOf
+                    .replace("{current}", String(clientsListPage))
+                    .replace("{total}", String(totalListPages))}
+                </div>
+                <div className="flex gap-2">
+                  {clientsListPage > 1 ? (
+                    <Link
+                      scroll={false}
+                      href={listHref(clientsListPage - 1)}
+                      className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
+                    >
+                      {ui.clients.listPrevious}
+                    </Link>
+                  ) : (
+                    <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-600">
+                      {ui.clients.listPrevious}
+                    </span>
+                  )}
+                  {clientsListPage < totalListPages ? (
+                    <Link
+                      scroll={false}
+                      href={listHref(clientsListPage + 1)}
+                      className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
+                    >
+                      {ui.clients.listNext}
+                    </Link>
+                  ) : (
+                    <span className="rounded-md border border-zinc-800 px-3 py-1.5 text-xs text-zinc-600">
+                      {ui.clients.listNext}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : (
           <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-sm text-zinc-400">
             {ui.clients.empty}

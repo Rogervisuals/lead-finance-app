@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function ExpensesPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams?: { error?: string; added?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -64,6 +64,11 @@ export default async function ExpensesPage({
           {ui.expenses.subtitle}
         </p>
       </div>
+      {searchParams?.added === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.expenses.addedSuccess}
+        </div>
+      ) : null}
 
       <section className="min-w-0 overflow-x-clip rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">

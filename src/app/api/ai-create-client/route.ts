@@ -1,7 +1,28 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getAiDailyCap } from "@/lib/permissions";
+import { getAiDailyCap, getAiMonthlyBudgetCap } from "@/lib/permissions";
 import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
+import { handleAIRequest } from "@/lib/ai/handle-ai-request";
+import {
+  FLAGGED_REQUEST_DELAY_MAX_MS,
+  FLAGGED_REQUEST_DELAY_MIN_MS,
+  MIN_REQUEST_INTERVAL_MS,
+} from "@/lib/ai/assistant-limits";
+import { incrementAiAbuseStrike } from "@/lib/ai/abuse-strikes";
+import { getClientIpFromRequest } from "@/lib/ai/get-client-ip";
+import {
+  checkRateLimits,
+  getRequiresCaptchaAfterRequest,
+  updateRateLimits,
+} from "@/lib/ai/rate-limit-store";
+import {
+  applyResetsIfNeeded,
+  getOrCreateUserAiUsageRow,
+  tryFetchAbuseColumns,
+  usageMetaFromRow,
+  type UsageMeta,
+} from "@/lib/ai/usage";
+import { validateAiAssistantInput } from "@/lib/ai/validate-ai-input";
 
 export const runtime = "nodejs";
 
@@ -94,6 +115,73 @@ type AiAddMileageResponse = {
   end_location: string | null;
   /** One leg in km (same as the mileage form): round_trip = one-way distance; one_way = full trip. */
   leg_distance_km: number | null;
+  notes: string | null;
+};
+
+type AiAddHoursResponse = {
+  action: "add_hours";
+  /** If set, log hours to this project (client inferred from the project). */
+  project_name: string | null;
+  /** If set (and project_name is null), log client-only hours. */
+  client_name: string | null;
+  /** "today" | "yesterday" | "tomorrow" | "YYYY-MM-DD" */
+  date: string;
+  /** Prefer "HH:MM" 24h. */
+  start_time: string | null;
+  /** Prefer "HH:MM" 24h. */
+  end_time: string | null;
+  /** Optional if start/end provided. */
+  duration_hours: number | null;
+  notes: string | null;
+};
+
+type AiAddBusinessExpenseResponse = {
+  action: "add_business_expense";
+  amount: number;
+  currency: string | null;
+  date: string;
+  /** Optional: if missing, infer from text (parking => Transport, etc.). */
+  category: string | null;
+  notes: string | null;
+};
+
+type AiAddBusinessExpenseFromTemplateResponse = {
+  action: "add_business_expense_from_template";
+  /** Preferred when possible (UUID from templates list in system prompt). */
+  template_id: string | null;
+  /** Free-form name/keyword when template_id is unknown. */
+  template_search: string | null;
+  /** Optional disambiguator: if multiple templates match, pick one with this amount. */
+  amount: number | null;
+  date: string | null;
+  notes: string | null;
+};
+
+type AiQueryPeriod = "this_month" | "last_month" | "this_year" | "last_year";
+
+type AiQueryParameters = {
+  year?: number;
+  month?: number | "this_month" | "last_month";
+  period?: AiQueryPeriod;
+  project_name?: string;
+  limit?: number;
+};
+
+type AiQueryResponse = {
+  action:
+    | "get_best_month"
+    | "get_worst_month"
+    | "get_total_income"
+    | "get_total_expenses"
+    | "get_profit"
+    | "get_average_monthly_income"
+    | "compare_periods"
+    | "get_top_projects"
+    | "get_project_revenue"
+    | "get_best_project"
+    | "get_total_hours"
+    | "get_project_hours";
+  parameters: AiQueryParameters;
 };
 
 type AiActionResponse =
@@ -107,17 +195,11 @@ type AiActionResponse =
   | AiCreateProjectResponse
   | AiUpdateProjectStatusResponse
   | AiDeleteProjectResponse
-  | AiAddMileageResponse;
-
-const MAX_WORDS = 45;
-const COOLDOWN_SECONDS = 3;
-
-type UsageRow = {
-  user_id: string;
-  date: string;
-  requests_count: number;
-  last_request_at: string | null;
-};
+  | AiAddMileageResponse
+  | AiAddHoursResponse
+  | AiAddBusinessExpenseResponse
+  | AiAddBusinessExpenseFromTemplateResponse
+  | AiQueryResponse;
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
@@ -154,7 +236,118 @@ function normalizeRelativeDate(input: string | null): string {
   return toISO(today);
 }
 
+function normalizeTimeOfDay(input: string | null): string | null {
+  if (!input) return null;
+  const raw = input.trim().toLowerCase();
+  if (!raw) return null;
+
+  // 24h forms: 13:00, 13.00, 1300
+  const m24 =
+    raw.match(/^(\d{1,2})(?::|\.)(\d{2})$/) ?? raw.match(/^(\d{2})(\d{2})$/);
+  if (m24) {
+    const hh = Number(m24[1]);
+    const mm = Number(m24[2]);
+    if (
+      Number.isFinite(hh) &&
+      Number.isFinite(mm) &&
+      hh >= 0 &&
+      hh <= 23 &&
+      mm >= 0 &&
+      mm <= 59
+    ) {
+      return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    }
+  }
+
+  // 12h forms: 1pm, 1:30pm, 12am
+  const m12 = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
+  if (m12) {
+    let hh = Number(m12[1]);
+    const mm = Number(m12[2] ?? "0");
+    const ap = m12[3];
+    if (
+      !Number.isFinite(hh) ||
+      !Number.isFinite(mm) ||
+      hh < 1 ||
+      hh > 12 ||
+      mm < 0 ||
+      mm > 59
+    ) {
+      return null;
+    }
+    if (ap === "am") hh = hh === 12 ? 0 : hh;
+    if (ap === "pm") hh = hh === 12 ? 12 : hh + 12;
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  }
+
+  return null;
+}
+
 function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | null {
+  const queryActions = new Set([
+    "get_best_month",
+    "get_worst_month",
+    "get_total_income",
+    "get_total_expenses",
+    "get_profit",
+    "get_average_monthly_income",
+    "compare_periods",
+    "get_top_projects",
+    "get_project_revenue",
+    "get_best_project",
+    "get_total_hours",
+    "get_project_hours",
+  ]);
+
+  if (typeof parsed.action === "string" && queryActions.has(parsed.action)) {
+    const p =
+      parsed.parameters && typeof parsed.parameters === "object"
+        ? (parsed.parameters as Record<string, unknown>)
+        : {};
+
+    const year =
+      typeof p.year === "number" ? p.year : Number(p.year ?? NaN);
+
+    const month =
+      typeof p.month === "number"
+        ? p.month
+        : typeof p.month === "string"
+          ? p.month
+          : undefined;
+
+    const period = typeof p.period === "string" ? p.period : undefined;
+
+    const limit =
+      typeof p.limit === "number" ? p.limit : Number(p.limit ?? NaN);
+
+    const project_name = trimOrNull(p.project_name) ?? undefined;
+
+    const monthOk =
+      month == null ||
+      (typeof month === "number" && month >= 1 && month <= 12) ||
+      month === "this_month" ||
+      month === "last_month";
+
+    const periodOk =
+      period == null ||
+      period === "this_month" ||
+      period === "last_month" ||
+      period === "this_year" ||
+      period === "last_year";
+
+    const params: AiQueryParameters = {};
+    if (Number.isFinite(year)) params.year = year;
+    if (monthOk && month != null) params.month = month as any;
+    if (periodOk && period != null) params.period = period as any;
+    if (Number.isFinite(limit)) params.limit = Math.max(1, Math.floor(limit));
+    if (project_name) params.project_name = project_name;
+
+    return {
+      action: parsed.action as AiQueryResponse["action"],
+      parameters: params,
+    };
+  }
+
   if (parsed.action === "create_client") {
     const name = trimOrNull(parsed.name);
     if (!name) return null;
@@ -305,6 +498,7 @@ function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | 
   if (parsed.action === "add_mileage") {
     const date = normalizeRelativeDate(trimOrNull(parsed.date));
     const templateId = trimOrNull(parsed.template_id);
+    const notes = trimOrNull(parsed.notes);
     if (templateId) {
       if (
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -321,6 +515,7 @@ function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | 
         start_location: null,
         end_location: null,
         leg_distance_km: null,
+        notes,
       };
     }
     const tripRaw = (trimOrNull(parsed.trip_type) ?? "one_way").toLowerCase();
@@ -341,6 +536,85 @@ function parseSingleAction(parsed: Record<string, unknown>): AiActionResponse | 
       start_location: trimOrNull(parsed.start_location),
       end_location,
       leg_distance_km: leg,
+      notes,
+    };
+  }
+  if (parsed.action === "add_hours") {
+    const project_name = trimOrNull(parsed.project_name);
+    const client_name = trimOrNull(parsed.client_name);
+    if (!project_name && !client_name) return null;
+
+    const date = normalizeRelativeDate(trimOrNull(parsed.date));
+    const start_time = normalizeTimeOfDay(trimOrNull(parsed.start_time));
+    const end_time = normalizeTimeOfDay(trimOrNull(parsed.end_time));
+
+    const duration_hours =
+      parsed.duration_hours == null
+        ? null
+        : typeof parsed.duration_hours === "number"
+          ? parsed.duration_hours
+          : Number(parsed.duration_hours ?? NaN);
+
+    const durOk =
+      duration_hours == null ||
+      (Number.isFinite(duration_hours) && duration_hours > 0 && duration_hours <= 24);
+    if (!durOk) return null;
+
+    if ((!start_time || !end_time) && duration_hours == null) return null;
+
+    return {
+      action: "add_hours",
+      project_name,
+      client_name,
+      date,
+      start_time,
+      end_time,
+      duration_hours: duration_hours == null ? null : duration_hours,
+      notes: trimOrNull(parsed.notes),
+    };
+  }
+  if (parsed.action === "add_business_expense") {
+    const amount =
+      typeof parsed.amount === "number" ? parsed.amount : Number(parsed.amount ?? NaN);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const currency = trimOrNull(parsed.currency);
+    const date = normalizeRelativeDate(trimOrNull(parsed.date));
+    const category = trimOrNull(parsed.category);
+    const notes = trimOrNull(parsed.notes);
+    return {
+      action: "add_business_expense",
+      amount,
+      currency,
+      date,
+      category,
+      notes,
+    };
+  }
+  if (parsed.action === "add_business_expense_from_template") {
+    const template_id = trimOrNull(parsed.template_id);
+    const template_search = trimOrNull(parsed.template_search);
+    if (!template_id && !template_search) return null;
+
+    if (
+      template_id &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        template_id,
+      )
+    ) {
+      return null;
+    }
+
+    const amount =
+      parsed.amount == null ? null : typeof parsed.amount === "number" ? parsed.amount : Number(parsed.amount ?? NaN);
+    if (amount != null && (!Number.isFinite(amount) || amount <= 0)) return null;
+
+    return {
+      action: "add_business_expense_from_template",
+      template_id,
+      template_search,
+      amount: amount == null ? null : amount,
+      date: trimOrNull(parsed.date),
+      notes: trimOrNull(parsed.notes),
     };
   }
   return null;
@@ -367,22 +641,20 @@ function parseAssistantJson(raw: string): AiActionResponse[] | null {
   }
 }
 
-function wordCount(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
-}
-
-function todayIsoDate() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 function unauthorized() {
   return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+}
+
+/** Keys the AI assistant client reads on success and error responses. */
+function usageResponseFields(u: UsageMeta) {
+  return {
+    usedToday: u.daily_used,
+    maxPerDay: u.daily_limit,
+    remaining: Math.max(0, u.daily_limit - u.daily_used),
+    daily_used: u.daily_used,
+    daily_limit: u.daily_limit,
+    remaining_budget: u.remaining_budget,
+  };
 }
 
 export async function GET() {
@@ -393,34 +665,50 @@ export async function GET() {
   if (!user) return unauthorized();
 
   const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
-  const maxPerDay = getAiDailyCap(plan);
-  if (maxPerDay === 0) {
+  const dailyLimit = getAiDailyCap(plan);
+  const monthlyBudgetCap = getAiMonthlyBudgetCap(plan);
+  if (dailyLimit === 0) {
     return NextResponse.json({
       usedToday: 0,
       maxPerDay: 0,
       remaining: 0,
+      remaining_budget: 0,
+      daily_used: 0,
+      daily_limit: 0,
     });
   }
-  const unlimited = !Number.isFinite(maxPerDay) || maxPerDay === Number.POSITIVE_INFINITY;
-  const effectiveCap = unlimited ? 1_000_000 : maxPerDay;
-
-  const usageDate = todayIsoDate();
   const { data: row } = await supabase
     .from("user_ai_usage")
-    .select("requests_count")
+    .select("daily_requests,monthly_cost")
     .eq("user_id", user.id)
-    .eq("date", usageDate)
     .maybeSingle();
 
-  const usedToday = Number((row as { requests_count?: unknown } | null)?.requests_count ?? 0);
+  const usedToday = Number((row as any)?.daily_requests ?? 0);
+  const monthlyCost = Number((row as any)?.monthly_cost ?? 0);
   return NextResponse.json({
     usedToday,
-    maxPerDay: unlimited ? 1_000_000 : maxPerDay,
-    remaining: Math.max(0, effectiveCap - usedToday),
+    maxPerDay: dailyLimit,
+    remaining: Math.max(0, dailyLimit - usedToday),
+    remaining_budget: Math.max(0, monthlyBudgetCap - monthlyCost),
+    daily_used: usedToday,
+    daily_limit: dailyLimit,
   });
 }
 
 export async function POST(req: Request) {
+  const body = (await req.json().catch(() => null)) as { message?: unknown } | null;
+  const validated = validateAiAssistantInput(body?.message);
+  if (!validated.ok) {
+    return NextResponse.json({ error: validated.error }, { status: 400 });
+  }
+  const message = validated.value;
+
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return unauthorized();
+
   const openAiKey = process.env.OPENAI_API_KEY;
   if (!openAiKey) {
     return NextResponse.json(
@@ -429,23 +717,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const body = (await req.json().catch(() => null)) as { message?: unknown } | null;
-  const message = typeof body?.message === "string" ? body.message.trim() : "";
-  if (!message) return badRequest("Message is required.");
-  if (wordCount(message) > MAX_WORDS) {
-    return badRequest(`Message too long (max ${MAX_WORDS} words)`);
-  }
-
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return unauthorized();
-
   const plan = await ensureSubscriptionAndGetPlan(supabase, user.id);
   const maxPerDay = getAiDailyCap(plan);
-  const unlimited = !Number.isFinite(maxPerDay) || maxPerDay === Number.POSITIVE_INFINITY;
-  const effectiveCap = unlimited ? 1_000_000 : maxPerDay;
+  const monthlyCostCap = getAiMonthlyBudgetCap(plan);
 
   if (maxPerDay === 0) {
     return NextResponse.json(
@@ -453,72 +727,55 @@ export async function POST(req: Request) {
         error: "AI assistant is not available on your current plan.",
         usedToday: 0,
         maxPerDay: 0,
+        remaining_budget: 0,
+        daily_used: 0,
+        daily_limit: 0,
       },
       { status: 403 },
     );
   }
 
-  const usageDate = todayIsoDate();
-  const { data: usageRow, error: usageError } = await supabase
-    .from("user_ai_usage")
-    .select("user_id,date,requests_count,last_request_at")
-    .eq("user_id", user.id)
-    .eq("date", usageDate)
-    .maybeSingle();
-
-  if (usageError) {
-    return NextResponse.json(
-      { error: "Could not read usage limits." },
-      { status: 500 },
-    );
+  const clientIp = getClientIpFromRequest(req);
+  const rl = checkRateLimits(user.id, clientIp);
+  if (!rl.ok) {
+    if (rl.reason === "user") {
+      void incrementAiAbuseStrike(supabase, user.id);
+    }
+    return NextResponse.json({ error: rl.message }, { status: 429 });
   }
 
-  const usage = usageRow as UsageRow | null;
-  const usedToday = Number(usage?.requests_count ?? 0);
-  if (usedToday >= effectiveCap) {
-    return NextResponse.json(
-      {
-        error: `Daily AI limit reached (${usedToday}/${unlimited ? "∞" : effectiveCap}). Try again tomorrow.`,
-        usedToday,
-        maxPerDay: unlimited ? 1_000_000 : maxPerDay,
-      },
-      { status: 429 },
-    );
-  }
+  const now = new Date();
+  let usageRow = await getOrCreateUserAiUsageRow(supabase, user.id);
+  usageRow = await applyResetsIfNeeded(supabase, usageRow, now);
 
-  if (usage?.last_request_at) {
-    const lastMs = new Date(usage.last_request_at).getTime();
-    const nowMs = Date.now();
-    const elapsedSec = (nowMs - lastMs) / 1000;
-    if (Number.isFinite(lastMs) && elapsedSec < COOLDOWN_SECONDS) {
-      const waitFor = Math.max(1, Math.ceil(COOLDOWN_SECONDS - elapsedSec));
+  const caps = { dailyLimit: maxPerDay, monthlyBudgetCap: monthlyCostCap };
+  if (usageRow.last_request_at) {
+    const lastMs = new Date(usageRow.last_request_at).getTime();
+    const elapsed = Date.now() - lastMs;
+    if (Number.isFinite(lastMs) && elapsed >= 0 && elapsed < MIN_REQUEST_INTERVAL_MS) {
       return NextResponse.json(
-        { error: `Please wait ${waitFor}s before sending another request.` },
+        {
+          error: "Please wait a moment before sending another request.",
+          ...usageResponseFields(usageMetaFromRow(usageRow, caps)),
+        },
         { status: 429 },
       );
     }
   }
 
-  const nextCount = usedToday + 1;
-  const { error: upsertErr } = await supabase.from("user_ai_usage").upsert(
-    {
-      user_id: user.id,
-      date: usageDate,
-      requests_count: nextCount,
-      last_request_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,date" },
-  );
-  if (upsertErr) {
-    return NextResponse.json(
-      { error: "Could not update usage limits." },
-      { status: 500 },
-    );
-  }
+  const { flagged } = await tryFetchAbuseColumns(supabase, user.id);
+  updateRateLimits(user.id, clientIp);
 
   const { data: mileageTemplateRows } = await supabase
     .from("mileage_templates")
     .select("id,trip_type,start_location,end_location,distance_km,notes")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  const { data: generalExpenseTemplateRows } = await supabase
+    .from("general_expenses_templates")
+    .select("id,amount,category,notes,is_active")
     .eq("user_id", user.id)
     .eq("is_active", true)
     .order("created_at", { ascending: false });
@@ -534,6 +791,15 @@ export async function POST(req: Request) {
     })),
   );
 
+  const generalExpenseTemplatesPayload = JSON.stringify(
+    (generalExpenseTemplateRows ?? []).map((t: any) => ({
+      id: t.id,
+      amount: Number(t.amount ?? 0),
+      category: String(t.category ?? ""),
+      notes: t.notes ?? null,
+    })),
+  );
+
   const mileagePromptAppend = `
 
 ADD MILEAGE:
@@ -544,75 +810,143 @@ ADD MILEAGE:
   "trip_type": "one_way" | "round_trip" | null,
   "start_location": string | null,
   "end_location": string | null,
-  "leg_distance_km": number | null
+  "leg_distance_km": number | null,
+  "notes": string | null
 }
 
 Mileage rules:
 - When template_id is set: only date + template_id are required (other fields may be null). Use when the user clearly refers to a saved route (e.g. "I went to sandro today" matches a template whose end_location is sandro).
 - Free-form (template_id null): require leg_distance_km, end_location, trip_type. leg_distance_km is always the ONE-WAY / single-leg distance in km (same as the mileage form field). If the user says "X km one way" and also round trip / "and back" / "return", use trip_type "round_trip" and leg_distance_km = X (stored total km = 2*X). One-way trip without return: trip_type "one_way", leg_distance_km = full trip km.
 - Parse routes: "from A to B", "A to B", "went from A to B": start_location A, end_location B. "huis"/"home" => you may output "home" for start_location.
+- If the user includes notes like "Notes: ...", set "notes" to that string (remove surrounding quotes).
 - Similar phrasing should yield the same JSON fields.
 
 User mileage templates (authoritative ids for template_id):
 ${mileageTemplatesPayload}
 `;
 
-  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  const generalExpensesPromptAppend = `
 
-  const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openAiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            'You convert user input into JSON actions.\n\nAvailable actions:\n- create_client\n- create_clients\n- update_client\n- add_income\n- delete_income\n- delete_client\n- create_company\n- create_project\n- update_project_status\n- delete_project\n- add_mileage\n\n---\n\nReturn ONLY JSON in this format:\n{\n  "actions": [\n    { "action": "..." }\n  ]\n}\n\nEach item in actions[] must match one of these shapes:\n\nCREATE:\n{\n  "action": "create_client",\n  "name": "Client Name",\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE MULTIPLE CLIENTS WITH COMPANY:\n{\n  "action": "create_clients",\n  "clients": [\n    {\n      "name": "required",\n      "email": null,\n      "notes": null\n    }\n  ],\n  "company_name": "optional"\n}\n\nUPDATE:\n{\n  "action": "update_client",\n  "search_name": "existing client name",\n  "new_name": null,\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE PROJECT:\n{\n  "action": "create_project",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "active",\n  "start_date": "today",\n  "end_date": null\n}\n\nUPDATE PROJECT STATUS:\n{\n  "action": "update_project_status",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "finished",\n  "end_date": "today"\n}\n\nDELETE PROJECT:\n{\n  "action": "delete_project",\n  "client_name": "required",\n  "project_name": "required"\n}\n\nADD INCOME:\n{\n  "action": "add_income",\n  "client_name": "required",\n  "project_name": null,\n  "amount": number,\n  "currency": "EUR",\n  "date": "YYYY-MM-DD",\n  "description": null\n}\n\nDELETE INCOME:\n{\n  "action": "delete_income",\n  "client_name": "required",\n  "project_name": null,\n  "date": "YYYY-MM-DD",\n  "amount": null\n}\n\nDELETE CLIENT:\n{\n  "action": "delete_client",\n  "client_name": "required",\n  "force": false\n}\n\nCREATE COMPANY:\n{\n  "action": "create_company",\n  "company_name": "required"\n}\n\nRules:\n- Prefer MULTIPLE actions in actions[] when the user asks for more than one operation.\n- client_name is REQUIRED\n- For add_income: amount is REQUIRED\n- For delete_income: amount optional\n- project_name optional\n- description optional\n- currency default = EUR if not provided\n- date:\n  - if user says "today" -> use "today"\n  - if user says "yesterday" -> use "yesterday"\n  - if user says "tomorrow" -> use "tomorrow"\n  - if no date -> use "today"\n- For delete_client:\n  - set force=true only when user clearly says force delete / delete all data\n- If user says delete project / remove project / delete [project name] / delete [project] from [client], ALWAYS use delete_project (not delete_income)\n- If the input references a known project name, prioritize project actions over income actions' +
-            mileagePromptAppend,
+ADD BUSINESS EXPENSE:
+{
+  "action": "add_business_expense",
+  "amount": number,
+  "currency": "EUR" | "USD" | "GBP" | string | null,
+  "date": "today" | "yesterday" | "tomorrow" | "YYYY-MM-DD",
+  "category": string | null,
+  "notes": string | null
+}
+
+ADD BUSINESS EXPENSE FROM TEMPLATE:
+{
+  "action": "add_business_expense_from_template",
+  "template_id": null | "<uuid from templates below>",
+  "template_search": string | null,
+  "amount": number | null,
+  "date": "today" | "yesterday" | "tomorrow" | "YYYY-MM-DD" | null,
+  "notes": string | null
+}
+
+Business expense rules:
+- If the user indicates a business/general expense (e.g. "business expense", "general expense", "I spent"), use add_business_expense.
+- If the user references a regular payment / template (e.g. "add transip payment"), use add_business_expense_from_template.
+- Put any trailing context like "during <event>" or "Notes: <text>" into notes.
+- If category is not explicitly stated, you may leave it null.
+
+User general expense templates (authoritative ids for template_id):
+${generalExpenseTemplatesPayload}
+`;
+
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  const systemPrompt =
+    'You convert user input into JSON actions.\n\nCRITICAL:\n- Return ONLY valid JSON (no prose).\n- Never calculate or invent results.\n- If the user is vague, choose the closest matching action.\n\nReturn JSON in this format:\n{\n  "actions": [\n    { "action": "..." }\n  ]\n}\n\n----------------------------------------\nEXISTING CRUD ACTIONS (keep working)\n----------------------------------------\nAvailable actions:\n- create_client\n- create_clients\n- update_client\n- add_income\n- delete_income\n- delete_client\n- create_company\n- create_project\n- update_project_status\n- delete_project\n- add_mileage\n- add_hours\n\nEach item in actions[] must match one of the existing shapes below.\n\nCREATE:\n{\n  "action": "create_client",\n  "name": "Client Name",\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE MULTIPLE CLIENTS WITH COMPANY:\n{\n  "action": "create_clients",\n  "clients": [\n    {\n      "name": "required",\n      "email": null,\n      "notes": null\n    }\n  ],\n  "company_name": "optional"\n}\n\nUPDATE:\n{\n  "action": "update_client",\n  "search_name": "existing client name",\n  "new_name": null,\n  "email": null,\n  "company": null,\n  "notes": null\n}\n\nCREATE PROJECT:\n{\n  "action": "create_project",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "active",\n  "start_date": "today",\n  "end_date": null\n}\n\nUPDATE PROJECT STATUS:\n{\n  "action": "update_project_status",\n  "client_name": "required",\n  "project_name": "required",\n  "status": "finished",\n  "end_date": "today"\n}\n\nDELETE PROJECT:\n{\n  "action": "delete_project",\n  "client_name": "required",\n  "project_name": "required"\n}\n\nADD INCOME:\n{\n  "action": "add_income",\n  "client_name": "required",\n  "project_name": null,\n  "amount": number,\n  "currency": "EUR",\n  "date": "YYYY-MM-DD",\n  "description": null\n}\n\nDELETE INCOME:\n{\n  "action": "delete_income",\n  "client_name": "required",\n  "project_name": null,\n  "date": "YYYY-MM-DD",\n  "amount": null\n}\n\nDELETE CLIENT:\n{\n  "action": "delete_client",\n  "client_name": "required",\n  "force": false\n}\n\nCREATE COMPANY:\n{\n  "action": "create_company",\n  "company_name": "required"\n}\n\nADD HOURS (time tracking):\n{\n  "action": "add_hours",\n  "project_name": null,\n  "client_name": null,\n  "date": "today" | "yesterday" | "tomorrow" | "YYYY-MM-DD",\n  "start_time": "HH:MM",\n  "end_time": "HH:MM",\n  "duration_hours": null,\n  "notes": null\n}\n\nHours rules:\n- Prefer 24h times for start_time/end_time (e.g. 13:00, 19:00).\n- If the user provides a duration instead of a full range, you may set duration_hours and include either start_time OR end_time.\n- If the user says "to project <name>" set project_name and leave client_name null.\n- If the user says only a client, set client_name and leave project_name null.\n- If date is not mentioned, use "today".\n\n----------------------------------------\nFINANCE / PROJECTS / TIME QUERIES (NEW)\n----------------------------------------\nThese actions MUST use the shape:\n{\n  "action": "action_name",\n  "parameters": {\n    "year": number?,\n    "month": number | "this_month" | "last_month"?,\n    "period": "this_month" | "last_month" | "this_year" | "last_year"?,\n    "project_name": string?,\n    "limit": number?\n  }\n}\n\nSupported query actions:\nFinance:\n- get_best_month\n- get_worst_month\n- get_total_income\n- get_total_expenses\n- get_profit\n- get_average_monthly_income\n- compare_periods\n\nProjects:\n- get_top_projects\n- get_project_revenue\n- get_best_project\n\nTime tracking:\n- get_total_hours\n- get_project_hours\n\nFlexible interpretation examples:\n- "When did I make the most?" -> get_best_month\n- "Total earnings this year" -> get_total_income with { "period": "this_year" }\n- "How much did I earn last year in November?" -> get_total_income with { "year": <last year as a 4-digit number>, "month": 11 } (if the user names a specific month, use year+month for that single calendar month; do NOT use "period": "last_year" for that — that would mean the full year)\n- "Compare this month to last month" -> compare_periods with { "period": "this_month" }\n- "Revenue from Kai" -> get_project_revenue with { "project_name": "Kai" }\n- "How many hours did I work last month?" -> get_total_hours with { "period": "last_month" }\n\nRules:\n- Always return JSON.\n- Never return unknown.\n- If unclear, best guess.\n\n---\n\nRules (existing):\n- Prefer MULTIPLE actions in actions[] when the user asks for more than one operation.\n- client_name is REQUIRED\n- For add_income: amount is REQUIRED\n- For delete_income: amount optional\n- project_name optional\n- description optional\n- currency default = EUR if not provided\n- date:\n  - if user says "today" -> use "today"\n  - if user says "yesterday" -> use "yesterday"\n  - if user says "tomorrow" -> use "tomorrow"\n  - if no date -> use "today"\n- For delete_client:\n  - set force=true only when user clearly says force delete / delete all data\n- If user says delete project / remove project / delete [project name] / delete [project] from [client], ALWAYS use delete_project (not delete_income)\n- If the input references a known project name, prioritize project actions over income actions' +
+    mileagePromptAppend +
+    generalExpensesPromptAppend;
+
+  if (flagged) {
+    const delayMs =
+      FLAGGED_REQUEST_DELAY_MIN_MS +
+      Math.floor(
+        Math.random() * (FLAGGED_REQUEST_DELAY_MAX_MS - FLAGGED_REQUEST_DELAY_MIN_MS + 1),
+      );
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+
+  const result = await handleAIRequest(supabase as any, user.id, message, {
+    limits: { dailyCap: maxPerDay, monthlyCostCap },
+    abuse: { flagged },
+    callAi: async ({ max_tokens }) => {
+      const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openAiKey}`,
+          "Content-Type": "application/json",
         },
-        { role: "user", content: message },
-      ],
-    }),
+        body: JSON.stringify({
+          model,
+          temperature: 0,
+          max_tokens,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message },
+          ],
+        }),
+      });
+
+      if (!openAiRes.ok) {
+        const errTxt = await openAiRes.text().catch(() => "");
+        return { ok: false, error: "OpenAI request failed.", status: 502, details: errTxt || undefined };
+      }
+
+      const payload = (await openAiRes.json().catch(() => null)) as any;
+      const content = payload?.choices?.[0]?.message?.content?.trim() ?? "";
+      const parsedActions = parseAssistantJson(content);
+      if (!parsedActions?.length) {
+        return { ok: false, error: "AI response invalid.", status: 422 };
+      }
+      const promptTokens = Number(payload?.usage?.prompt_tokens ?? 0);
+      const completionTokens = Number(payload?.usage?.completion_tokens ?? 0);
+      const totalTokens =
+        Number.isFinite(promptTokens) && Number.isFinite(completionTokens)
+          ? promptTokens + completionTokens
+          : 0;
+      return { ok: true, actions: parsedActions, tokens_used: totalTokens, raw: payload };
+    },
   });
 
-  if (!openAiRes.ok) {
-    const errTxt = await openAiRes.text().catch(() => "");
+  const DAILY_CAP_MESSAGE = "You've reached your daily AI limit. Try again tomorrow.";
+  if (!result.ok && result.status === 429 && result.error === DAILY_CAP_MESSAGE) {
+    void incrementAiAbuseStrike(supabase, user.id);
+  }
+
+  if (!result.ok) {
     return NextResponse.json(
-      { error: "OpenAI request failed.", details: errTxt || undefined },
-      { status: 502 },
+      {
+        error: result.error,
+        ...(result.usage ? usageResponseFields(result.usage) : {}),
+      },
+      { status: result.status },
     );
   }
 
-  const payload = (await openAiRes.json().catch(() => null)) as
-    | {
-        choices?: Array<{
-          message?: { content?: string | null };
-        }>;
-      }
-    | null;
+  const requiresCaptcha = getRequiresCaptchaAfterRequest(user.id);
 
-  const content = payload?.choices?.[0]?.message?.content?.trim() ?? "";
-  const parsedActions = parseAssistantJson(content);
-  if (!parsedActions?.length) {
-    return NextResponse.json(
-      { error: "AI response invalid." },
-      { status: 422 },
-    );
+  if (result.kind === "db_only") {
+    return NextResponse.json({
+      answer: result.answer,
+      actions: [],
+      usage_meta: result.usage,
+      usage: usageResponseFields(result.usage),
+      ...(requiresCaptcha ? { requiresCaptcha: true } : {}),
+    });
   }
 
   return NextResponse.json({
-    actions: parsedActions,
-    usage: {
-      usedToday: nextCount,
-      maxPerDay: unlimited ? 1_000_000 : maxPerDay,
-      remaining: Math.max(0, effectiveCap - nextCount),
-    },
+    actions: result.actions,
+    usage_meta: result.usage,
+    usage: usageResponseFields(result.usage),
+    ...(requiresCaptcha ? { requiresCaptcha: true } : {}),
   });
 }
 

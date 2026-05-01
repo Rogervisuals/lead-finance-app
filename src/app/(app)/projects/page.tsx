@@ -63,7 +63,7 @@ function projectsListHref(opts: { page: number; client?: string; error?: string 
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams?: { error?: string; client?: string; page?: string };
+  searchParams?: { error?: string; client?: string; page?: string; added?: string };
 }) {
   const locale = getServerLocale();
   const ui = getUi(locale);
@@ -154,6 +154,12 @@ export default async function ProjectsPage({
           Plan: <span className="text-zinc-400">{plan}</span> — projects {projectCount} / {maxLabel}
         </p>
       </div>
+
+      {searchParams?.added === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.projects.addedSuccess}
+        </div>
+      ) : null}
 
       {showLimitError ? (
         <div

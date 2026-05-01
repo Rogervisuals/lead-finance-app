@@ -75,7 +75,6 @@ export default async function SettingsPage({
   const billing = await loadSettingsBillingSection(supabase, user.id, locale, ui, plan);
 
   const saved = searchParams?.saved === "1";
-  const missingBusinessName = searchParams?.error === "business_name";
   const fxRateError = searchParams?.error === "fx_rate";
   const logoErr = searchParams?.error;
   const logoErrorMessage =
@@ -120,11 +119,6 @@ export default async function SettingsPage({
         {saved ? (
           <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
             {ui.settings.saved}
-          </div>
-        ) : null}
-        {missingBusinessName ? (
-          <div className="rounded-lg border border-amber-900/40 bg-amber-950/25 px-4 py-3 text-sm text-amber-200/95">
-            {ui.settings.businessNameRequired}
           </div>
         ) : null}
         {logoErrorMessage ? (
@@ -269,13 +263,10 @@ export default async function SettingsPage({
 
           <div className="mt-6 grid gap-6 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-6">
             <label className="block sm:col-span-1">
-              <span className={labelClass}>
-                {ui.settings.businessName} <span className="text-rose-400/90">*</span>
-              </span>
+              <span className={labelClass}>{ui.settings.businessName}</span>
               <input
                 form={FORM_ID}
                 name="business_name"
-                required
                 defaultValue={row.business_name ?? ""}
                 className={`${inputClass} mt-2`}
               />

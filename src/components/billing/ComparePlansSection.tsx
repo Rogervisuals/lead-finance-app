@@ -40,6 +40,12 @@ function planTitle(plan: PlanId): string {
   return plan.charAt(0).toUpperCase() + plan.slice(1);
 }
 
+function planPriceLabel(plan: PlanId): string | null {
+  if (plan === "basic") return "€5.99";
+  if (plan === "pro") return "€12.99";
+  return null;
+}
+
 function FeatureCell({
   enabled,
   previewColumn,
@@ -127,11 +133,18 @@ function PlanCompareCard({
     const left =
       used != null && isCurrentColumn ? String(used) : isPreviewColumn ? compareCopy.usageDash : "0";
     return (
-      <span className="inline-flex items-center justify-end gap-1.5 tabular-nums text-zinc-200">
-        <span>
-          {left} / {capLabel}
+      <span className="flex flex-col items-end gap-0.5 text-right">
+        <span className="inline-flex items-center justify-end gap-1.5 tabular-nums text-zinc-200">
+          <span>
+            {left} / {capLabel}
+          </span>
+          <span className="sr-only">{copy.billingFeatureIncluded}</span>
         </span>
-        <span className="sr-only">{copy.billingFeatureIncluded}</span>
+        {isProColumn ? (
+          <span className="text-[10px] leading-snug text-zinc-500">
+            Designed for everyday use. Heavy usage may be temporarily limited.
+          </span>
+        ) : null}
       </span>
     );
   })();
@@ -156,7 +169,15 @@ function PlanCompareCard({
 
       <div className={`mb-3 flex min-h-[3.25rem] flex-col gap-1 ${isProColumn ? "pt-2" : ""}`}>
         <div className="flex items-start justify-between gap-2">
-          <h3 className="text-base font-semibold text-zinc-100">{planTitle(columnPlan)}</h3>
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-base font-semibold text-zinc-100">{planTitle(columnPlan)}</h3>
+            {planPriceLabel(columnPlan) ? (
+              <div className="text-xs text-zinc-500">
+                <span className="tabular-nums">{planPriceLabel(columnPlan)}</span>
+                <span className="text-zinc-600"> / month</span>
+              </div>
+            ) : null}
+          </div>
           {isPreviewColumn ? (
             <span className="shrink-0 rounded-md border border-zinc-700/80 bg-zinc-900/60 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
               {compareCopy.previewBadge}

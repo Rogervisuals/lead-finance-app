@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerActionClient } from "@/lib/supabase/server";
 import { canUseActiveTimer } from "@/lib/permissions";
@@ -14,31 +15,53 @@ function roundTo2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
+/** Revalidate the app shell (header timer) without a full `redirect()` navigation. */
+function revalidateAfterTimerChange(returnTo: string) {
+  const raw = (returnTo || "/dashboard").trim() || "/dashboard";
+  let pathname = "/dashboard";
+  try {
+    pathname = raw.startsWith("http")
+      ? new URL(raw).pathname || "/dashboard"
+      : new URL(raw, "http://local.invalid").pathname || "/dashboard";
+  } catch {
+    pathname = raw.split("?")[0]?.trim() || "/dashboard";
+  }
+  if (!pathname.startsWith("/")) pathname = `/${pathname}`;
+  revalidatePath(pathname, "layout");
+}
+
 async function validateClientAndProject(
   supabase: ReturnType<typeof createSupabaseServerActionClient>,
   userId: string,
   client_id: string,
   project_id: string | null
 ) {
-  const { data: client } = await supabase
-    .from("clients")
-    .select("id")
-    .eq("id", client_id)
-    .eq("user_id", userId)
-    .maybeSingle();
+  if (!project_id) {
+    const { data: client } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("id", client_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    return !!client;
+  }
 
-  if (!client) return false;
+  const [{ data: client }, { data: project }] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("id")
+      .eq("id", client_id)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("projects")
+      .select("id,client_id")
+      .eq("id", project_id)
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
 
-  if (!project_id) return true;
-
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id,client_id")
-    .eq("id", project_id)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  return !!(project && project.client_id === client_id);
+  return !!(client && project && project.client_id === client_id);
 }
 
 export async function startActiveTimerAction(formData: FormData) {
@@ -68,14 +91,6 @@ export async function startActiveTimerAction(formData: FormData) {
   const ok = await validateClientAndProject(supabase, user.id, client_id, project_id);
   if (!ok) redirect(`${returnTo}?timer_error=invalid_project`);
 
-  const { data: existing } = await supabase
-    .from("active_timer")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (existing) redirect(`${returnTo}?timer_error=already_running`);
-
   const { error } = await supabase.from("active_timer").insert({
     user_id: user.id,
     client_id,
@@ -84,9 +99,16 @@ export async function startActiveTimerAction(formData: FormData) {
     notes,
   });
 
-  if (error) redirect(`${returnTo}?timer_error=save_failed`);
+  if (error) {
+    const msg = String((error as any)?.message ?? "");
+    // If DB enforces one active timer per user, treat duplicates as "already running".
+    if (/duplicate|unique|already exists/i.test(msg)) {
+      redirect(`${returnTo}?timer_error=already_running`);
+    }
+    redirect(`${returnTo}?timer_error=save_failed`);
+  }
 
-  redirect(returnTo);
+  revalidateAfterTimerChange(returnTo);
 }
 
 export async function stopActiveTimerAction(formData: FormData) {
@@ -117,7 +139,7 @@ export async function stopActiveTimerAction(formData: FormData) {
     redirect(`${returnTo}?timer_error=zero_duration`);
   }
 
-  await supabase.from("hours").insert({
+  const { error: hoursErr } = await supabase.from("hours").insert({
     user_id: user.id,
     client_id: row.client_id,
     project_id: row.project_id,
@@ -127,7 +149,11 @@ export async function stopActiveTimerAction(formData: FormData) {
     notes: row.notes ?? null,
   });
 
+  if (hoursErr) {
+    redirect(`${returnTo}?timer_error=save_failed`);
+  }
+
   await supabase.from("active_timer").delete().eq("id", row.id).eq("user_id", user.id);
 
-  redirect(returnTo);
+  revalidateAfterTimerChange(returnTo);
 }

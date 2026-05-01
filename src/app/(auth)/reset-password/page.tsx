@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { createSupabaseBrowserClient, getBrowserSessionOnce } from "@/lib/supabase/client";
 
 function normalizeAuthError(message: string): string {
   const m = message.toLowerCase();
@@ -26,7 +26,7 @@ export default function ResetPasswordPage() {
     const supabase = createSupabaseBrowserClient();
 
     const syncRecoverySessionState = async () => {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await getBrowserSessionOnce();
       const session = data.session;
       setIsRecoverySession(Boolean(session));
       setRecoveryEmail(session?.user?.email ?? "");
@@ -162,7 +162,7 @@ export default function ResetPasswordPage() {
     setSaveLoading(true);
 
     const supabase = createSupabaseBrowserClient();
-    const { data: sessionData } = await supabase.auth.getSession();
+    const { data: sessionData } = await getBrowserSessionOnce();
     if (!sessionData.session) {
       setError("Recovery session expired. Request a new reset link and try again.");
       setSaveLoading(false);

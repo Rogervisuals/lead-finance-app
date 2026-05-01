@@ -47,14 +47,16 @@ export function DashboardGettingStarted({
 
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const [allDoneDismissed] = useState(() => {
-    if (typeof window === "undefined") return false;
+  // Keep the initial render identical on server + client to avoid hydration mismatches.
+  const [allDoneDismissed, setAllDoneDismissed] = useState(false);
+
+  useEffect(() => {
     try {
-      return sessionStorage.getItem(ALL_DONE_ACK_KEY) === "1";
+      setAllDoneDismissed(sessionStorage.getItem(ALL_DONE_ACK_KEY) === "1");
     } catch {
-      return false;
+      setAllDoneDismissed(false);
     }
-  });
+  }, []);
 
   useEffect(() => {
     // Clear a timer from a previous unmount so React Strict Mode remount does not persist a false "left dashboard".

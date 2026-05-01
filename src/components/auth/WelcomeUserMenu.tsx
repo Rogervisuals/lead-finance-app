@@ -8,12 +8,14 @@ import type { FullUi } from "@/lib/i18n/get-ui";
 
 export function WelcomeUserMenu({
   displayName,
+  plan,
   serverTheme,
   showAdminFeedback = false,
   showSendFeedback = true,
   ui,
 }: {
   displayName: string;
+  plan: string;
   serverTheme: ThemeMode;
   showAdminFeedback?: boolean;
   showSendFeedback?: boolean;
@@ -22,9 +24,14 @@ export function WelcomeUserMenu({
   return (
     <div className="group relative hidden md:block">
       <div className="flex cursor-default items-center gap-1 rounded-md px-2 py-1 text-sm text-zinc-300 transition-colors hover:bg-zinc-900 hover:text-white">
-        <span>
-          {ui.nav.welcome} {displayName}
-        </span>
+        <div className="flex flex-col leading-tight">
+          <span>
+            {ui.nav.welcome} {displayName}
+          </span>
+          <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-600 group-hover:text-zinc-500">
+            Plan: {plan}
+          </span>
+        </div>
         <span className="text-xs text-zinc-500 group-hover:text-zinc-400" aria-hidden>
           ▾
         </span>

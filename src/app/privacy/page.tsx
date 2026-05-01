@@ -10,7 +10,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const APP_NAME = "Lead Finance";
+const APP_NAME = "Zarlo";
 
 export const metadata: Metadata = {
   title: `Privacy Policy — ${APP_NAME}`,

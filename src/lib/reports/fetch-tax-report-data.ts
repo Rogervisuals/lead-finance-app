@@ -60,11 +60,32 @@ export type TaxReportClientRow = {
   projectCount: number;
 };
 
+export type TaxReportExpenseCategorySlice = {
+  category: string;
+  amount: number;
+  pct: number;
+};
+
+export type TaxReportMonthlyPoint = {
+  /** "Jan".."Dec" (always English abbreviations for compact charts). */
+  month: string;
+  income: number;
+  expenses: number;
+  net: number;
+};
+
 export type TaxReportPayload = {
   businessName: string;
   reportingPeriodLabel: string;
   exportDateLabel: string;
   baseCurrency: string;
+  taxPercentage: number;
+  vatEnabled: boolean;
+  vatPercentage: number;
+  /** Inclusive start date for the report period (YYYY-MM-DD), if known. */
+  periodStartIso: string | null;
+  /** Inclusive end date for the report period (YYYY-MM-DD), if known. */
+  periodEndIso: string | null;
   totalIncome: number;
   /** Sum of `mileage.distance_km` in the reporting period (final stored distance). */
   totalMileageKm: number;
@@ -75,7 +96,15 @@ export type TaxReportPayload = {
   totalGeneralExpenses: number;
   /** Total expenses (project + general) in base currency (converted). */
   totalExpenses: number;
+  /** Estimated tax for the period: tax% × max(0, netProfit). */
+  estimatedTax: number;
+  /** Safe-to-spend for the period: netProfit − estimatedTax. */
+  safeToSpend: number;
   netProfit: number;
+  /** Expense categories (project + general), base currency, shares add up to ~100%. */
+  expenseCategories: TaxReportExpenseCategorySlice[];
+  /** Monthly breakdown for trend charts (only populated for full-year reports). */
+  monthly: TaxReportMonthlyPoint[];
   income: TaxReportIncomeRow[];
   expenses: TaxReportExpenseRow[];
   hours: TaxReportHourRow[];
@@ -127,6 +156,9 @@ export async function fetchTaxReportData(
     baseCurrency: string;
     reportingPeriodLabel: string;
     exportDate: Date;
+    taxPercentage: number;
+    vatEnabled: boolean;
+    vatPercentage: number;
   }
 ): Promise<TaxReportPayload> {
   const exportDateLabel = opts.exportDate.toISOString().slice(0, 19).replace("T", " ") + " UTC";
@@ -137,6 +169,18 @@ export async function fetchTaxReportData(
     range.monthEndExclusive && range.kind !== "all"
       ? toISODateOnly(range.monthEndExclusive)
       : null;
+  const periodStartIso = isoStart;
+  const periodEndIso =
+    range.kind === "custom"
+      ? (range.customEndInclusive ?? null)
+      : isoEndExclusive
+        ? (() => {
+            const d = new Date(`${isoEndExclusive}T00:00:00`);
+            if (Number.isNaN(d.getTime())) return null;
+            d.setDate(d.getDate() - 1);
+            return toISODateOnly(d);
+          })()
+        : null;
 
   const monthStartMs = range.monthStart?.getTime() ?? null;
   const monthEndExclusiveMs = range.monthEndExclusive?.getTime() ?? null;
@@ -388,6 +432,89 @@ export async function fetchTaxReportData(
   const totalWorkedHours = (hourRows ?? []).reduce((acc, r: any) => acc + num(r.hours), 0);
   const totalMileageKm = (mileageRows ?? []).reduce((acc, r: any) => acc + num(r.distance_km), 0);
 
+  const netProfit = totalIncomeConverted - totalExpensesAllConverted;
+  const estimatedTax = Math.max(0, netProfit) * (num(opts.taxPercentage) / 100);
+  const safeToSpend = netProfit - estimatedTax;
+
+  const monthly: TaxReportMonthlyPoint[] = (() => {
+    // Always return 12 months (Jan–Dec) with numeric values (0 when missing).
+    const y = range.monthStart?.getFullYear() ?? opts.exportDate.getFullYear();
+    const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const incomeByM = Array.from({ length: 12 }, () => 0);
+    const expByM = Array.from({ length: 12 }, () => 0);
+
+    for (const r of incomeRows ?? []) {
+      const d = String((r as any).date ?? "").slice(0, 10);
+      const mm = /^\d{4}-(\d{2})-/.exec(d);
+      if (!mm) continue;
+      const yr = Number(d.slice(0, 4));
+      if (yr !== y) continue;
+      const idx = Number(mm[1]) - 1;
+      if (idx < 0 || idx > 11) continue;
+      incomeByM[idx] += num((r as any).amount_converted);
+    }
+    for (const r of expenseRows ?? []) {
+      const d = String((r as any).date ?? "").slice(0, 10);
+      const mm = /^\d{4}-(\d{2})-/.exec(d);
+      if (!mm) continue;
+      const yr = Number(d.slice(0, 4));
+      if (yr !== y) continue;
+      const idx = Number(mm[1]) - 1;
+      if (idx < 0 || idx > 11) continue;
+      expByM[idx] += num((r as any).amount_converted);
+    }
+    for (const r of generalExpensesRows ?? []) {
+      const d = String((r as any).date ?? "").slice(0, 10);
+      const mm = /^\d{4}-(\d{2})-/.exec(d);
+      if (!mm) continue;
+      const yr = Number(d.slice(0, 4));
+      if (yr !== y) continue;
+      const idx = Number(mm[1]) - 1;
+      if (idx < 0 || idx > 11) continue;
+      expByM[idx] += num((r as any).amount);
+    }
+
+    return monthLabels.map((m, i) => {
+      const inc = incomeByM[i];
+      const exp = expByM[i];
+      const net = inc - exp;
+      return {
+        month: m,
+        income: Math.round(inc * 100) / 100,
+        expenses: Math.round(exp * 100) / 100,
+        net: Math.round(net * 100) / 100,
+      };
+    });
+  })();
+
+  const categoryTotals = new Map<string, number>();
+  for (const r of expenseRows ?? []) {
+    const cat = String((r as any).category ?? "").trim() || "Other";
+    categoryTotals.set(cat, (categoryTotals.get(cat) ?? 0) + num((r as any).amount_converted));
+  }
+  for (const r of generalExpensesRows ?? []) {
+    const cat = String((r as any).category ?? "").trim() || "Other";
+    categoryTotals.set(cat, (categoryTotals.get(cat) ?? 0) + num((r as any).amount));
+  }
+
+  const totalForPct = Array.from(categoryTotals.values()).reduce((a, b) => a + b, 0);
+  const sortedCats = Array.from(categoryTotals.entries())
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const TOP_N = 4;
+  const top = sortedCats.slice(0, TOP_N);
+  const otherAmount = sortedCats.slice(TOP_N).reduce((acc, r) => acc + r.amount, 0);
+  const categorySlicesRaw = [
+    ...top,
+    ...(otherAmount > 0 ? [{ category: "Other", amount: otherAmount }] : []),
+  ];
+  const expenseCategories: TaxReportExpenseCategorySlice[] = categorySlicesRaw.map((r) => ({
+    category: r.category,
+    amount: Math.round(r.amount * 100) / 100,
+    pct: totalForPct > 0 ? Math.round((r.amount / totalForPct) * 100) : 0,
+  }));
+
   const companyRows: TaxReportCompanyRow[] = companiesList.map((co) => {
     const clientIds = clients.filter((c) => c.company_id === co.id).map((c) => c.id);
     const clientSet = new Set(clientIds);
@@ -461,13 +588,22 @@ export async function fetchTaxReportData(
     reportingPeriodLabel: opts.reportingPeriodLabel,
     exportDateLabel,
     baseCurrency: opts.baseCurrency,
+    taxPercentage: Math.max(0, Math.min(100, num(opts.taxPercentage))),
+    vatEnabled: Boolean(opts.vatEnabled),
+    vatPercentage: Math.max(0, Math.min(100, num(opts.vatPercentage))),
+    periodStartIso,
+    periodEndIso,
     totalIncome: Math.round(totalIncomeConverted * 100) / 100,
     totalMileageKm: Math.round(totalMileageKm * 100) / 100,
     totalWorkedHours: Math.round(totalWorkedHours * 100) / 100,
     totalProjectExpenses: Math.round(totalExpensesConverted * 100) / 100,
     totalGeneralExpenses: Math.round(totalGeneralExpensesConverted * 100) / 100,
     totalExpenses: Math.round(totalExpensesAllConverted * 100) / 100,
-    netProfit: Math.round((totalIncomeConverted - totalExpensesAllConverted) * 100) / 100,
+    estimatedTax: Math.round(estimatedTax * 100) / 100,
+    safeToSpend: Math.round(safeToSpend * 100) / 100,
+    netProfit: Math.round(netProfit * 100) / 100,
+    expenseCategories,
+    monthly,
     income: sortByDateAsc(incomeLines),
     expenses: sortByDateAsc(expenseLines),
     generalExpenses: sortByDateAsc(generalExpensesLines),

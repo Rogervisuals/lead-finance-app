@@ -84,7 +84,7 @@ export async function createIncomeAction(formData: FormData) {
     description,
   });
 
-  redirect("/income");
+  redirect("/income?added=1");
 }
 
 export async function updateIncomeAction(formData: FormData) {
@@ -252,5 +252,5 @@ export async function createIncomeFromTemplateAction(formData: FormData) {
     description: template.description ?? null,
   });
 
-  redirect("/income");
+  redirect("/income?added=1");
 }

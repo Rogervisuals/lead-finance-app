@@ -18,8 +18,16 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Lead Finance Dashboard",
+  title: "Zarlo Dashboard",
   description: "Freelancer finance dashboard (Next.js + Supabase)",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-64x64.png", sizes: "64x64", type: "image/png" },
+    ],
+  },
 };
 
 /** Ensures mobile browsers use device width and 1:1 initial scale (no implicit zoom). */

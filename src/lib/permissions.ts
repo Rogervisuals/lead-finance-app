@@ -35,7 +35,7 @@ export const permissions = {
   pro: {
     maxProjects: Number.POSITIVE_INFINITY,
     maxClients: Number.POSITIVE_INFINITY,
-    aiRequests: Number.POSITIVE_INFINITY,
+    aiRequests: 50,
     businessFeatures: true,
     rateInsights: true,
     /** Create/manage invoices, PDFs, finance invoices hub. */
@@ -89,6 +89,17 @@ export function canAddClients(plan: string, currentClientCount: number, addCount
 export function getAiDailyCap(plan: string): number {
   const v = hasAccess(plan, "aiRequests");
   return typeof v === "number" ? v : 0;
+}
+
+/**
+ * Monthly AI spend ceiling (EUR), same units as `user_ai_usage.monthly_cost`.
+ * Shown as “remaining budget” in the assistant; enforced server-side per plan.
+ */
+export function getAiMonthlyBudgetCap(plan: string): number {
+  const p = getEffectivePlan(plan);
+  if (p === "basic") return 1;
+  if (p === "pro") return 6;
+  return 0;
 }
 
 export function canViewRateInsights(plan: string): boolean {

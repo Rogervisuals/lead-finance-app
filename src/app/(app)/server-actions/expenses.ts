@@ -75,7 +75,7 @@ export async function createExpenseAction(formData: FormData) {
     description,
   });
 
-  redirect("/expenses");
+  redirect("/expenses?added=1");
 }
 
 export async function updateExpenseAction(formData: FormData) {

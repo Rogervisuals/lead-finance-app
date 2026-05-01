@@ -103,7 +103,7 @@ export function BaseCurrencyField({
       <span className={hintClass}>{hint}</span>
 
       <div
-        className="mt-4 rounded-xl border border-amber-600/35 bg-gradient-to-br from-amber-950/70 via-orange-950/55 to-amber-950/50 p-4 shadow-sm ring-1 ring-amber-800/30"
+        className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm ring-1 ring-amber-200 dark:border-amber-600/35 dark:bg-gradient-to-br dark:from-amber-950/70 dark:via-orange-950/55 dark:to-amber-950/50 dark:ring-amber-800/30"
         role="note"
         aria-labelledby={cardTitleId}
       >
@@ -112,11 +112,18 @@ export function BaseCurrencyField({
             ⚠️
           </span>
           <div className="min-w-0 flex-1 space-y-2">
-            <p id={cardTitleId} className="text-base font-semibold text-zinc-50">
+            <p
+              id={cardTitleId}
+              className="text-base font-semibold text-zinc-900 dark:text-zinc-50"
+            >
               {warningTitle}
             </p>
-            <p className="text-sm font-medium leading-relaxed text-amber-100">{warningBody}</p>
-            <p className="text-xs leading-relaxed text-amber-200/75">{warningSubtext}</p>
+            <p className="text-sm font-medium leading-relaxed text-amber-900 dark:text-amber-100">
+              {warningBody}
+            </p>
+            <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-200/75">
+              {warningSubtext}
+            </p>
           </div>
         </div>
       </div>

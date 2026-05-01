@@ -1,4 +1,4 @@
--- Supabase schema for the Lead Finance Dashboard
+-- Supabase schema for the Zarlo Dashboard
 -- Run this in the Supabase SQL editor for your project.
 
 -- Enable UUID generation (gen_random_uuid()).

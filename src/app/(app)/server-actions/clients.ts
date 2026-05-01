@@ -76,7 +76,7 @@ export async function createClientAction(formData: FormData) {
     address,
   });
 
-  redirect("/clients");
+  redirect("/clients?added=1");
 }
 
 export async function updateClientAction(formData: FormData) {

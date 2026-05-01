@@ -50,7 +50,7 @@ export function CheckoutSuccessClient() {
             Payment successful, your account has been upgraded
           </h1>
           <p className="mt-3 text-sm text-zinc-400">
-            Your plan is set to {planLabel(plan)}. You can continue using Lead Finance with full access.
+            Your plan is set to {planLabel(plan)}. You can continue using Zarlo with full access.
           </p>
         </>
       ) : null}
