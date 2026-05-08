@@ -317,9 +317,9 @@ export function InvoiceTemplate({
             {t.from}
           </div>
           <div style={{ fontSize: 12, marginTop: 10, color: "#111827" }}>
-            <div style={{ fontWeight: 700 }}>
-              {business.business_name || "Rogervisuals"}
-            </div>
+            {showLine(business.business_name) ? (
+              <div style={{ fontWeight: 700 }}>{business.business_name}</div>
+            ) : null}
             {showLine(business.full_name) ? (
               <div style={{color: "#374151" }}>
                 {business.full_name}

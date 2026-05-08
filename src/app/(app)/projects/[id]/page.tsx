@@ -376,7 +376,7 @@ export default async function ProjectDetailPage({
                               project={{ name: project.name, description: null }}
                               business={{
                                 business_name:
-                                  (businessRow as any)?.business_name ?? "Rogervisuals",
+                                  (businessRow as any)?.business_name ?? "",
                                 full_name: (businessRow as any)?.full_name ?? null,
                                 email: (businessRow as any)?.email ?? null,
                                 phone: (businessRow as any)?.phone ?? null,
