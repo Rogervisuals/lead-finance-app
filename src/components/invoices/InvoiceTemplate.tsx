@@ -264,23 +264,8 @@ export function InvoiceTemplate({
               }}
             />
           ) : (
-            <div
-              style={{
-                width: 180,
-                height: 56,
-                border: "1px solid #E5E7EB",
-                borderRadius: 10,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#6B7280",
-                fontSize: 12,
-                fontWeight: 700,
-                letterSpacing: 1,
-              }}
-            >
-              {t.logo}
-            </div>
+            // Keep space but render nothing when there's no logo.
+            <div style={{ width: 180, height: 56 }} />
           )}
         </div>
 
