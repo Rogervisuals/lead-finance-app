@@ -15,8 +15,10 @@ import { InvoicePdfDownloadButton } from "@/components/invoices/InvoicePdfDownlo
 import {
   createInvoiceAction,
   deleteInvoiceAction,
+  saveInvoiceFooterDefaultsAction,
   toggleInvoiceStatusAction,
 } from "../../server-actions/invoices";
+import { BUILTIN_THANK_YOU_MESSAGE } from "@/lib/invoices/invoice-footer-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +86,8 @@ export default async function ProjectDetailPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const ui = getUi(getServerLocale());
+  const locale = getServerLocale();
+  const ui = getUi(locale);
 
   const projectId = params.id;
   const pageRaw = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
@@ -130,10 +133,21 @@ export default async function ProjectDetailPage({
   const { data: businessRow } = await supabase
     .from("user_settings")
     .select(
-      "business_name,full_name,email,phone,website,iban,bic,vat_number,kvk_number,address,invoice_logo_path"
+      "business_name,full_name,email,phone,website,iban,bic,vat_number,kvk_number,address,invoice_logo_path,default_invoice_thank_you_message,default_invoice_payment_information"
     )
     .eq("user_id", user.id)
     .maybeSingle();
+
+  const savedThankYou = String(
+    (businessRow as { default_invoice_thank_you_message?: string | null } | null)
+      ?.default_invoice_thank_you_message ?? ""
+  ).trim();
+  const savedPayment = String(
+    (businessRow as { default_invoice_payment_information?: string | null } | null)
+      ?.default_invoice_payment_information ?? ""
+  ).trim();
+  const defaultInvoiceThankYou = savedThankYou.length ? savedThankYou : BUILTIN_THANK_YOU_MESSAGE;
+  const defaultInvoicePayment = savedPayment;
 
   const invoiceLogoUrl = getInvoiceLogoPublicUrl(
     (businessRow as { invoice_logo_path?: string | null })?.invoice_logo_path
@@ -170,7 +184,7 @@ export default async function ProjectDetailPage({
       ? supabase
           .from("invoices")
           .select(
-            "id,amount_ex_vat,vat_enabled,vat_percentage,vat_amount,total_amount,status,created_at,paid_at,description,quantity,currency"
+            "id,amount_ex_vat,vat_enabled,vat_percentage,vat_amount,total_amount,status,created_at,paid_at,description,quantity,quantity_unit,currency,thank_you_message,payment_information,invoice_locale"
           )
           .eq("project_id", projectId)
           .order("created_at", { ascending: false })
@@ -298,8 +312,11 @@ export default async function ProjectDetailPage({
               vatPercentageDefault={settings.vat_percentage ?? 21}
               vatEnabledDefault={settings.vat_enabled}
               defaultInvoiceCurrency={defaultInvoiceCurrency}
+              defaultThankYouMessage={defaultInvoiceThankYou}
+              defaultPaymentInformation={defaultInvoicePayment}
               returnTo={baseUrl}
               createInvoiceAction={createInvoiceAction}
+              saveInvoiceFooterDefaultsAction={saveInvoiceFooterDefaultsAction}
             />
           </div>
 
@@ -372,6 +389,11 @@ export default async function ProjectDetailPage({
                                 invoice_logo_url: invoiceLogoUrl,
                               }}
                               currency={invCcy}
+                              locale={String((inv as any)?.invoice_locale ?? "en") === "nl"
+                                ? "nl"
+                                : String((inv as any)?.invoice_locale ?? "en") === "es"
+                                  ? "es"
+                                  : "en"}
                             />
                             <form action={toggleInvoiceStatusAction}>
                               <input type="hidden" name="invoice_id" value={inv.id} />

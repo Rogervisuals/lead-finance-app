@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { InvoiceTemplate } from "@/components/invoices/InvoiceTemplate";
 import { flushSync } from "react-dom";
+import type { InvoiceLocale } from "@/lib/invoices/invoice-locale";
 
 type InvoiceRow = {
   id: string;
@@ -17,6 +18,8 @@ type InvoiceRow = {
   quantity?: number | string | null;
   /** Stored invoice currency (EUR or USD). */
   currency?: string | null;
+  thank_you_message?: string | null;
+  payment_information?: string | null;
 };
 
 export function InvoicePdfDownloadButton({
@@ -25,6 +28,7 @@ export function InvoicePdfDownloadButton({
   project,
   business,
   currency,
+  locale,
 }: {
   invoice: InvoiceRow;
   client: {
@@ -48,6 +52,7 @@ export function InvoicePdfDownloadButton({
     invoice_logo_url?: string | null;
   };
   currency: string;
+  locale: InvoiceLocale;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -91,6 +96,7 @@ export function InvoicePdfDownloadButton({
             project={project}
             business={business}
             currency={currency}
+            locale={locale}
           />,
         );
       });
@@ -183,7 +189,7 @@ export function InvoicePdfDownloadButton({
     } finally {
       setBusy(false);
     }
-  }, [busy, invoice, client, project, business, currency]);
+  }, [busy, invoice, client, project, business, currency, locale]);
 
   return (
     <>

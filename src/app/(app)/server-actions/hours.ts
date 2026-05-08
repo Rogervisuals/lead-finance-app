@@ -106,7 +106,7 @@ export async function createHourAction(formData: FormData) {
         notes,
       });
       if (!err2) {
-        redirect("/hours");
+        redirect("/hours?added=1");
       }
     }
 
@@ -116,7 +116,7 @@ export async function createHourAction(formData: FormData) {
     redirect(`/hours/add?error=${encodeURIComponent(msg)}`);
   }
 
-  redirect("/hours");
+  redirect("/hours?added=1");
 }
 
 export async function updateHourAction(formData: FormData) {
@@ -177,7 +177,7 @@ export async function updateHourAction(formData: FormData) {
     );
   }
 
-  redirect("/hours");
+  redirect("/hours?updated=1");
 }
 
 export async function deleteHourAction(formData: FormData) {

@@ -36,6 +36,7 @@ const en = {
     noCompany: "No company",
     manageCompanies: "Manage companies",
     addOrgHint: "to add an organization.",
+    changesSaved: "Changes saved.",
   },
   table: {
     date: "Date",
@@ -300,6 +301,13 @@ const en = {
     createTitle: "Create a client",
     nameRequired: "Name *",
     companyOptional: "Company (optional)",
+    companyOptionalHintAria: "About the company field",
+    companyOptionalHintP1:
+      "Use this if you have multiple clients under one company.",
+    companyOptionalHintP2:
+      "For example: a business with multiple contacts or clients.",
+    companyOptionalHintP3:
+      "Not needed for individual clients (freelancers or sole proprietors).",
     companyText: "Company (text)",
     companyTextPlaceholder: "Optional label until DB migration is applied",
     addClient: "Add client",
@@ -389,6 +397,7 @@ const en = {
     totalsTitle: "Hours totals",
     addTitle: "Add hours",
     editTitle: "Edit hours",
+    addedSuccess: "Hours have been added.",
   },
   business: {
     title: "Business",
@@ -463,7 +472,7 @@ const es = {
     back: "Volver",
     view: "Ver",
     edit: "Editar",
-    delete: "Eliminar",
+    delete: "",
     actions: "Acciones",
     save: "Guardar",
     cancel: "Cancelar",
@@ -482,6 +491,7 @@ const es = {
     noCompany: "Sin empresa",
     manageCompanies: "Gestionar empresas",
     addOrgHint: "para añadir una organización.",
+    changesSaved: "Cambios guardados.",
   },
   table: {
     date: "Fecha",
@@ -750,6 +760,13 @@ const es = {
     createTitle: "Crear cliente",
     nameRequired: "Nombre *",
     companyOptional: "Empresa (opcional)",
+    companyOptionalHintAria: "Información sobre el campo empresa",
+    companyOptionalHintP1:
+      "Úsalo si tienes varios clientes bajo la misma empresa.",
+    companyOptionalHintP2:
+      "Por ejemplo: un negocio con varios contactos o clientes.",
+    companyOptionalHintP3:
+      "No hace falta para clientes individuales (autónomos o empresarios unipersonales).",
     companyText: "Empresa (texto)",
     companyTextPlaceholder: "Etiqueta opcional hasta aplicar la migración",
     addClient: "Añadir cliente",
@@ -839,6 +856,7 @@ const es = {
     totalsTitle: "Totales de horas",
     addTitle: "Añadir horas",
     editTitle: "Editar horas",
+    addedSuccess: "Se han añadido las horas.",
   },
   business: {
     title: "Negocio",

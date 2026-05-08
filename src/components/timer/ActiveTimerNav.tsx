@@ -1,12 +1,21 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import type { ActiveTimerRow } from "@/lib/active-timer";
 import {
   startActiveTimerAction,
   stopActiveTimerAction,
+  type StopActiveTimerResult,
 } from "@/app/(app)/server-actions/active-timer";
 
 type ClientOpt = {
@@ -87,8 +96,10 @@ function TimerErrorBanner({ planUpgradeMessage }: { planUpgradeMessage: string }
   );
 }
 
+const HOURS_SAVED_MESSAGE = "Hours have been added to your log.";
+
 export function ActiveTimerNav({
-  initialTimer: timer,
+  initialTimer,
   clients,
   projects,
   canUseTimer = true,
@@ -105,32 +116,55 @@ export function ActiveTimerNav({
   const [returnTo, setReturnTo] = useState(() => pathname || "/dashboard");
   const [timerPending, startTimerTransition] = useTransition();
 
+  /** Server redirects append `?timer_error=…`; drop it from the address bar and from `return_to`. */
+  const stripTimerErrorFromLocation = useCallback((): string => {
+    if (typeof window === "undefined") return pathname || "/dashboard";
+    const url = new URL(window.location.href);
+    const had = url.searchParams.has("timer_error");
+    url.searchParams.delete("timer_error");
+    const next =
+      url.pathname + (url.searchParams.toString() ? `?${url.searchParams.toString()}` : "");
+    if (had) {
+      router.replace(next, { scroll: false });
+    }
+    return next;
+  }, [router, pathname]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setReturnTo(window.location.pathname + window.location.search);
+      setReturnTo(stripTimerErrorFromLocation());
     }
-  }, [pathname]);
+  }, [pathname, stripTimerErrorFromLocation]);
 
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  /** Mirrors server `initialTimer`; cleared optimistically right after a successful stop. */
+  const [liveTimer, setLiveTimer] = useState(initialTimer);
+  const [hoursSavedMessage, setHoursSavedMessage] = useState<string | null>(null);
+  /** Stop-timer failures from server result (not URL `timer_error`). */
+  const [stopTimerError, setStopTimerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLiveTimer(initialTimer);
+  }, [initialTimer]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!timer) return;
+    if (!liveTimer) return;
     setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [timer]);
+  }, [liveTimer]);
 
   const elapsedSeconds = useMemo(() => {
-    if (!timer) return 0;
-    const start = new Date(timer.start_time).getTime();
+    if (!liveTimer) return 0;
+    const start = new Date(liveTimer.start_time).getTime();
     return Math.max(0, (now - start) / 1000);
-  }, [timer, now]);
+  }, [liveTimer, now]);
 
   const clientIdFromPath = useMemo(() => {
     const m = pathname?.match(/^\/clients\/([0-9a-f-]{36})/i);
@@ -156,10 +190,22 @@ export function ActiveTimerNav({
   const clientOptionLabels = useClientOptionLabels(clients);
 
   function openModal() {
+    setHoursSavedMessage(null);
+    setStopTimerError(null);
     if (typeof window !== "undefined") {
-      setReturnTo(window.location.pathname + window.location.search);
+      setReturnTo(stripTimerErrorFromLocation());
     }
     setOpen(true);
+  }
+
+  function closeModal() {
+    if (timerPending) return;
+    setHoursSavedMessage(null);
+    setStopTimerError(null);
+    if (typeof window !== "undefined") {
+      setReturnTo(stripTimerErrorFromLocation());
+    }
+    setOpen(false);
   }
 
   function handleStartTimer(e: FormEvent<HTMLFormElement>) {
@@ -169,7 +215,9 @@ export function ActiveTimerNav({
       const fd = new FormData(form);
       await startActiveTimerAction(fd);
       router.refresh();
-      setOpen(false);
+      if (typeof window !== "undefined") {
+        setReturnTo(stripTimerErrorFromLocation());
+      }
     });
   }
 
@@ -178,16 +226,42 @@ export function ActiveTimerNav({
     const form = e.currentTarget;
     startTimerTransition(async () => {
       const fd = new FormData(form);
-      await stopActiveTimerAction(fd);
+      const result: StopActiveTimerResult = await stopActiveTimerAction(fd);
+
+      if (!result.ok) {
+        setHoursSavedMessage(null);
+        if (result.reason === "zero_duration") {
+          setStopTimerError(
+            "That session is too short to log. Keep the timer running a bit longer, then stop again."
+          );
+          setLiveTimer(null);
+        } else if (result.reason === "save_failed") {
+          setStopTimerError("Could not save your hours. Try again.");
+        } else {
+          setStopTimerError("No active timer found.");
+          setLiveTimer(null);
+        }
+        if (typeof window !== "undefined") {
+          setReturnTo(stripTimerErrorFromLocation());
+        }
+        router.refresh();
+        return;
+      }
+
+      setStopTimerError(null);
+      setHoursSavedMessage(HOURS_SAVED_MESSAGE);
+      setLiveTimer(null);
+      if (typeof window !== "undefined") {
+        setReturnTo(stripTimerErrorFromLocation());
+      }
       router.refresh();
-      setOpen(false);
     });
   }
 
   return (
     <>
       <div className="flex min-h-9 min-w-0 items-center gap-2">
-        {timer ? (
+        {liveTimer ? (
           <>
             <button
               type="button"
@@ -204,9 +278,9 @@ export function ActiveTimerNav({
               title="Timer running — click to manage"
             >
               🟢{" "}
-              {timer.projectName !== "—"
-                ? `${timer.clientName} - ${timer.projectName}`
-                : timer.clientName}{" "}
+              {liveTimer.projectName !== "—"
+                ? `${liveTimer.clientName} - ${liveTimer.projectName}`
+                : liveTimer.clientName}{" "}
               ({formatHMS(elapsedSeconds)})
             </button>
           </>
@@ -229,9 +303,7 @@ export function ActiveTimerNav({
                 data-timer-backdrop
                 className="absolute inset-0 bg-zinc-950/75"
                 aria-label="Close"
-                onClick={() => {
-                  if (!timerPending) setOpen(false);
-                }}
+                onClick={closeModal}
               />
               <div
                 role="dialog"
@@ -250,7 +322,7 @@ export function ActiveTimerNav({
                   <button
                     type="button"
                     data-timer-close
-                    onClick={() => setOpen(false)}
+                    onClick={closeModal}
                     disabled={timerPending}
                     className="rounded-md border border-zinc-700 bg-zinc-950/40 px-3 py-1.5 text-xs font-medium text-zinc-100 transition-colors hover:border-zinc-600 hover:bg-zinc-950/60 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -258,20 +330,36 @@ export function ActiveTimerNav({
                   </button>
                 </div>
 
+                {stopTimerError ? (
+                  <div
+                    data-timer-stop-error
+                    className="mb-4 rounded-md border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200"
+                  >
+                    {stopTimerError}
+                  </div>
+                ) : null}
                 <Suspense fallback={null}>
                   <TimerErrorBanner planUpgradeMessage={timerUpgradeMessage} />
                 </Suspense>
+                {hoursSavedMessage ? (
+                  <div
+                    data-timer-success
+                    className="mb-4 rounded-md border border-emerald-900/45 bg-emerald-950/25 px-3 py-2 text-xs text-emerald-100"
+                  >
+                    {hoursSavedMessage}
+                  </div>
+                ) : null}
 
-                {timer ? (
+                {liveTimer ? (
                   <div className="space-y-5">
                     <div>
                       <div className="text-sm font-medium text-zinc-400">
                         Client / project
                       </div>
                       <div className="mt-1.5 text-base font-semibold text-zinc-100">
-                        {timer.projectName !== "—"
-                          ? `${timer.clientName} — ${timer.projectName}`
-                          : timer.clientName}
+                        {liveTimer.projectName !== "—"
+                          ? `${liveTimer.clientName} — ${liveTimer.projectName}`
+                          : liveTimer.clientName}
                       </div>
                     </div>
                     <div>
@@ -282,13 +370,13 @@ export function ActiveTimerNav({
                         {formatHMS(elapsedSeconds)}
                       </div>
                     </div>
-                    {timer.notes ? (
+                    {liveTimer.notes ? (
                       <div>
                         <div className="text-sm font-medium text-zinc-400">
                           Notes
                         </div>
                         <div className="mt-1.5 text-sm leading-relaxed text-zinc-200">
-                          {timer.notes}
+                          {liveTimer.notes}
                         </div>
                       </div>
                     ) : null}

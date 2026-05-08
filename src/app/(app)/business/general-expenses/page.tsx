@@ -48,7 +48,12 @@ function expenseMatchesTemplate(
 export default async function GeneralExpensesPage({
   searchParams,
 }: {
-  searchParams?: { template_error?: string; range?: string; error?: string };
+  searchParams?: {
+    template_error?: string;
+    range?: string;
+    error?: string;
+    saved?: string;
+  };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -190,6 +195,12 @@ export default async function GeneralExpensesPage({
           </form>
         </div>
       </div>
+
+      {searchParams?.saved === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.common.changesSaved}
+        </div>
+      ) : null}
 
       <section className="rounded-xl border border-rose-900/40 bg-zinc-900/20 p-4 lg:p-5">
         <div className="text-sm text-zinc-400">Total spendings</div>

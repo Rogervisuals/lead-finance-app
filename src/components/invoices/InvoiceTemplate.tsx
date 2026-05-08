@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
+import { renderAsteriskBold } from "@/lib/invoices/render-asterisk-bold";
+import type { InvoiceLocale } from "@/lib/invoices/invoice-locale";
 
 type InvoiceLike = {
   id: string;
@@ -14,7 +16,11 @@ type InvoiceLike = {
   description?: string | null;
   /** Line quantity; amount_ex_vat is line total (unit price × qty). */
   quantity?: number | string | null;
+  /** Display-only label for PDF quantity column. */
+  quantity_unit?: "qty" | "hours" | string | null;
   currency?: string | null;
+  thank_you_message?: string | null;
+  payment_information?: string | null;
 };
 
 function toMoney(n: unknown) {
@@ -32,15 +38,49 @@ function formatQuantity(n: number) {
   return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
-function toDateOnly(iso: string | null) {
+function formatHoursFromDecimal(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return "0:00";
+  const totalMinutes = Math.round(n * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = Math.abs(totalMinutes % 60);
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+function englishOrdinalSuffix(n: number) {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return "th";
+  switch (n % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+function toInvoicePdfDate(iso: string | null, locale: InvoiceLocale) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  }).format(d);
+
+  // Match requested formats:
+  // - English: "May 6th 2026"
+  // - Spanish: "DD/MM/YYYY" (European numeric)
+  // - Dutch: "DD-MM-YYYY"
+  if (locale === "en") {
+    const month = new Intl.DateTimeFormat("en-US", { month: "long" }).format(d);
+    const day = d.getDate();
+    const year = d.getFullYear();
+    return `${month} ${day}${englishOrdinalSuffix(day)} ${year}`;
+  }
+
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(d.getFullYear());
+  return locale === "nl" ? `${dd}-${mm}-${yyyy}` : `${dd}/${mm}/${yyyy}`;
 }
 
 export function InvoiceTemplate({
@@ -49,6 +89,7 @@ export function InvoiceTemplate({
   project,
   business,
   currency = "EUR",
+  locale = "en",
 }: {
   invoice: InvoiceLike;
   client: {
@@ -73,22 +114,105 @@ export function InvoiceTemplate({
     invoice_logo_url?: string | null;
   };
   currency?: string;
+  locale?: InvoiceLocale;
 }) {
+  const t = useMemo(() => {
+    if (locale === "es") {
+      return {
+        invoiceTitle: "FACTURA",
+        date: "Fecha",
+        from: "De",
+        billTo: "Facturar a",
+        details: "Detalles",
+        project: "Proyecto",
+        description: "Descripción",
+        qty: "Cant.",
+        hours: "Horas",
+        price: "Precio",
+        amount: "Importe",
+        subtotal: "Subtotal",
+        vat: "IVA",
+        total: "TOTAL",
+        paymentInformation: "Información de pago",
+        phone: "Teléfono",
+        website: "Sitio web",
+        email: "Correo",
+        logo: "LOGO",
+        iban: "IBAN",
+        bic: "BIC",
+        vatNumber: "NIF / IVA",
+        kvk: "Registro mercantil",
+      } as const;
+    }
+    if (locale === "nl") {
+      return {
+        invoiceTitle: "FACTUUR",
+        date: "Datum",
+        from: "Van",
+        billTo: "Factuur aan",
+        details: "Details",
+        project: "Project",
+        description: "Omschrijving",
+        qty: "Aantal",
+        hours: "Uren",
+        price: "Prijs",
+        amount: "Bedrag",
+        subtotal: "Subtotaal",
+        vat: "BTW",
+        total: "TOTAAL",
+        paymentInformation: "Betaalinformatie",
+        phone: "Telefoon",
+        website: "Website",
+        email: "E-mail",
+        logo: "LOGO",
+        iban: "IBAN",
+        bic: "BIC",
+        vatNumber: "BTW-nummer",
+        kvk: "KvK",
+      } as const;
+    }
+    return {
+      invoiceTitle: "INVOICE",
+      date: "Date",
+      from: "From",
+      billTo: "Bill to",
+      details: "Details",
+      project: "Project",
+      description: "Description",
+      qty: "Qty",
+      hours: "Hours",
+      price: "Price",
+      amount: "Amount",
+      subtotal: "Subtotal",
+      vat: "VAT",
+      total: "TOTAL",
+      paymentInformation: "Payment information",
+      phone: "Phone",
+      website: "Website",
+      email: "Email",
+      logo: "LOGO",
+      iban: "IBAN",
+      bic: "BIC",
+      vatNumber: "VAT",
+      kvk: "KvK",
+    } as const;
+  }, [locale]);
+
   const fmt = useMemo(() => {
     try {
-      return new Intl.NumberFormat(undefined, {
+      return new Intl.NumberFormat(locale === "nl" ? "nl-NL" : locale === "es" ? "es-ES" : "en-US", {
         style: "currency",
         currency,
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
     } catch {
-      return new Intl.NumberFormat(undefined, {
+      return new Intl.NumberFormat(locale === "nl" ? "nl-NL" : locale === "es" ? "es-ES" : "en-US", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
     }
-  }, [currency]);
+  }, [currency, locale]);
 
   const amountEx = toMoney(invoice.amount_ex_vat);
   const qtyRaw = toMoney(invoice.quantity);
@@ -101,6 +225,10 @@ export function InvoiceTemplate({
 
   const invoiceNo = String(invoice.id).slice(0, 8).toUpperCase();
   const showLine = (v: unknown) => String(v ?? "").trim().length > 0;
+  const quantityUnit =
+    String(invoice.quantity_unit ?? "").trim().toLowerCase() === "hours"
+      ? "hours"
+      : "qty";
 
   return (
     <div
@@ -151,14 +279,14 @@ export function InvoiceTemplate({
                 letterSpacing: 1,
               }}
             >
-              LOGO
+              {t.logo}
             </div>
           )}
         </div>
 
         <div style={{ textAlign: "right", flex: 1 }}>
           <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 1 }}>
-            INVOICE
+            {t.invoiceTitle}
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: "#374151" }}>
             <span style={{ color: "#111827", fontWeight: 700 }}>
@@ -166,9 +294,9 @@ export function InvoiceTemplate({
             </span>
           </div>
           <div style={{ marginTop: 4, fontSize: 12, color: "#374151" }}>
-            Date:{" "}
+            {t.date}:{" "}
             <span style={{ color: "#111827" }}>
-              {toDateOnly(invoice.created_at)}
+              {toInvoicePdfDate(invoice.created_at, locale)}
             </span>
           </div>
         </div>
@@ -201,7 +329,7 @@ export function InvoiceTemplate({
               textTransform: "uppercase",
             }}
           >
-            From
+            {t.from}
           </div>
           <div style={{ fontSize: 12, marginTop: 10, color: "#111827" }}>
             <div style={{ fontWeight: 700 }}>
@@ -224,34 +352,39 @@ export function InvoiceTemplate({
             ) : null}
             {showLine(business.phone) ? (
               <div style={{marginTop: 10, color: "#374151" }}>
-                <b>Phone:  </b>{business.phone}
+                <b>{t.phone}:  </b>
+                {business.phone}
               </div>
             ) : null}
             {showLine(business.website) ? (
               <div style={{color: "#374151" }}>
-                <b>Website:  </b>{business.website}
+                <b>{t.website}:  </b>
+                {business.website}
               </div>
             ) : null}
             {showLine(business.email) ? (
               <div style={{color: "#374151" }}>
-                <b>Email:  </b>{business.email}
+                <b>{t.email}:  </b>
+                {business.email}
               </div>
             ) : null}
             {showLine(business.iban) ? (
               <div style={{ marginTop: 3, color: "#374151" }}>
-                <b>IBAN:  </b><span style={{ color: "#111827" }}>{business.iban}</span>
+                <b>{t.iban}:  </b>
+                <span style={{ color: "#111827" }}>{business.iban}</span>
               </div>
             ) : null}
             {showLine(business.bic) ? (
               <div style={{ marginTop: 3, color: "#374151" }}>
-                <b>BIC:  </b><span style={{ color: "#111827" }}>{business.bic}</span>
+                <b>{t.bic}:  </b>
+                <span style={{ color: "#111827" }}>{business.bic}</span>
               </div>
             ) : null}
             {business.vat_number || business.kvk_number ? (
               <div style={{ fontSize: 11, marginTop: 8, color: "#6B7280" }}>
-                {business.vat_number ? `VAT: ${business.vat_number}` : null}
+                {business.vat_number ? `${t.vatNumber}: ${business.vat_number}` : null}
                 {business.vat_number && business.kvk_number ? " · " : null}
-                {business.kvk_number ? `KvK: ${business.kvk_number}` : null}
+                {business.kvk_number ? `${t.kvk}: ${business.kvk_number}` : null}
               </div>
             ) : null}
           </div>
@@ -267,7 +400,7 @@ export function InvoiceTemplate({
               textTransform: "uppercase",
             }}
           >
-            Bill to
+            {t.billTo}
           </div>
           <div style={{ fontSize: 12, marginTop: 10, color: "#111827" }}>
             {showLine(client.company) ? (
@@ -276,9 +409,7 @@ export function InvoiceTemplate({
             <div style={{ fontWeight: showLine(client.company) ? 400 : 700 }}>
               {client.name}
             </div>
-            {showLine(client.email) ? (
-              <div style={{color: "#374151" }}>{client.email}</div>
-            ) : null}
+
             {showLine(client.address) ? (
               <div
                 style={{
@@ -304,11 +435,11 @@ export function InvoiceTemplate({
             textTransform: "uppercase",
           }}
         >
-          Details
+          {t.details}
         </div>
         <div style={{ fontSize: 12, marginTop: 10, color: "#111827" }}>
           <div>
-            Project: <span style={{ fontWeight: 700 }}>{project.name}</span>
+            {t.project}: <span style={{ fontWeight: 700 }}>{project.name}</span>
           </div>
         </div>
       </div>
@@ -329,10 +460,12 @@ export function InvoiceTemplate({
             color: "#111827",
           }}
         >
-          <div>Description</div>
-          <div style={{ textAlign: "right" }}>Qty</div>
-          <div style={{ textAlign: "right" }}>Price</div>
-          <div style={{ textAlign: "right" }}>Amount</div>
+          <div>{t.description}</div>
+          <div style={{ textAlign: "right" }}>
+            {quantityUnit === "hours" ? t.hours : t.qty}
+          </div>
+          <div style={{ textAlign: "right" }}>{t.price}</div>
+          <div style={{ textAlign: "right" }}>{t.amount}</div>
         </div>
         <div
           style={{
@@ -351,7 +484,7 @@ export function InvoiceTemplate({
             {showLine(invoice.description) ? String(invoice.description) : project.name}
           </div>
           <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-            {formatQuantity(lineQty)}
+            {quantityUnit === "hours" ? formatHoursFromDecimal(lineQty) : formatQuantity(lineQty)}
           </div>
           <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
             {fmt.format(unitEx)}
@@ -373,7 +506,7 @@ export function InvoiceTemplate({
                 paddingTop: 6,
               }}
             >
-              <div>Subtotal</div>
+              <div>{t.subtotal}</div>
               <div style={{ fontVariantNumeric: "tabular-nums", color: "#111827" }}>
                 {fmt.format(amountEx)}
               </div>
@@ -388,7 +521,9 @@ export function InvoiceTemplate({
                   paddingTop: 6,
                 }}
               >
-                <div>VAT ({vatPct}%)</div>
+                <div>
+                  {t.vat} ({vatPct}%)
+                </div>
                 <div style={{ fontVariantNumeric: "tabular-nums", color: "#111827" }}>
                   {fmt.format(vatAmount)}
                 </div>
@@ -411,13 +546,56 @@ export function InvoiceTemplate({
                 color: "#111827",
               }}
             >
-              <div>TOTAL</div>
+              <div>{t.total}</div>
               <div style={{ fontVariantNumeric: "tabular-nums" }}>
                 {fmt.format(total)}
               </div>
             </div>
           </div>
         </div>
+
+        {showLine(invoice.thank_you_message) || showLine(invoice.payment_information) ? (
+          <div style={{ marginTop: 32, paddingTop: 20, borderTop: "1px solid #E5E7EB" }}>
+            {showLine(invoice.thank_you_message) ? (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#111827",
+                  whiteSpace: "pre-wrap",
+                  lineHeight: 1.55,
+                }}
+              >
+                {renderAsteriskBold(String(invoice.thank_you_message), "ty")}
+              </div>
+            ) : null}
+            {showLine(invoice.payment_information) ? (
+              <div style={{ marginTop: showLine(invoice.thank_you_message) ? 22 : 0 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: "#111827",
+                    letterSpacing: 0.4,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {t.paymentInformation}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    marginTop: 10,
+                    color: "#111827",
+                    whiteSpace: "pre-wrap",
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {renderAsteriskBold(String(invoice.payment_information), "pay")}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

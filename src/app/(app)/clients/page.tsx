@@ -14,6 +14,7 @@ import { getServerLocale } from "@/lib/i18n/server";
 import { getUi } from "@/lib/i18n/get-ui";
 import { canCreateClient, hasAccess } from "@/lib/permissions";
 import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
+import { DashboardBlockHint } from "@/components/dashboard/DashboardBlockHint";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ function clientsListHref(opts: { page: number; error?: string }) {
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams?: { error?: string; added?: string; page?: string };
+  searchParams?: { error?: string; added?: string; page?: string; saved?: string };
 }) {
   const ui = getUi(getServerLocale());
   const supabase = createSupabaseServerClient();
@@ -73,6 +74,18 @@ export default async function ClientsPage({
       error: searchParams?.error,
     });
 
+  const companyFieldHint = (
+    <DashboardBlockHint
+      ariaLabel={ui.clients.companyOptionalHintAria}
+      panelAlign="start"
+      panelClassName="w-[min(22rem,calc(100vw-2.5rem))]"
+    >
+      <p>{ui.clients.companyOptionalHintP1}</p>
+      <p>{ui.clients.companyOptionalHintP2}</p>
+      <p>{ui.clients.companyOptionalHintP3}</p>
+    </DashboardBlockHint>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-3">
@@ -90,6 +103,12 @@ export default async function ClientsPage({
       {searchParams?.added === "1" ? (
         <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
           {ui.clients.addedSuccess}
+        </div>
+      ) : null}
+
+      {searchParams?.saved === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.common.changesSaved}
         </div>
       ) : null}
 
@@ -140,9 +159,18 @@ export default async function ClientsPage({
             />
           </label>
           {hasCompanyLink ? (
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-sm text-zinc-300">{ui.clients.companyOptional}</span>
+            <div className="space-y-1 sm:col-span-2">
+              <div className="flex items-center gap-1.5">
+                <label
+                  htmlFor="create-client-company-id"
+                  className="cursor-pointer text-sm text-zinc-300"
+                >
+                  {ui.clients.companyOptional}
+                </label>
+                {companyFieldHint}
+              </div>
               <select
+                id="create-client-company-id"
                 name="company_id"
                 className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
                 defaultValue=""
@@ -160,16 +188,25 @@ export default async function ClientsPage({
                 </Link>{" "}
                 {ui.common.addOrgHint}
               </p>
-            </label>
+            </div>
           ) : (
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-sm text-zinc-300">{ui.clients.companyText}</span>
+            <div className="space-y-1 sm:col-span-2">
+              <div className="flex items-center gap-1.5">
+                <label
+                  htmlFor="create-client-company-text"
+                  className="cursor-pointer text-sm text-zinc-300"
+                >
+                  {ui.clients.companyText}
+                </label>
+                {companyFieldHint}
+              </div>
               <input
+                id="create-client-company-text"
                 name="company"
                 className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
                 placeholder={ui.clients.companyTextPlaceholder}
               />
-            </label>
+            </div>
           )}
           <label className="space-y-1">
             <span className="text-sm text-zinc-300">{ui.common.notes}</span>

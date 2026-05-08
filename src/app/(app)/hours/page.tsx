@@ -18,7 +18,7 @@ function sumHours(rows: Array<{ hours: number | string | null | undefined }>) {
 export default async function HoursPage({
   searchParams,
 }: {
-  searchParams?: { page?: string };
+  searchParams?: { page?: string; saved?: string; added?: string; updated?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -121,6 +121,20 @@ export default async function HoursPage({
           </Link>
         </div>
       </div>
+
+      {searchParams?.saved === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.common.changesSaved}
+        </div>
+      ) : searchParams?.added === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.hours.addedSuccess}
+        </div>
+      ) : searchParams?.updated === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.common.changesSaved}
+        </div>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">

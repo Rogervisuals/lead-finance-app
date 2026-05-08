@@ -21,6 +21,7 @@ import { SubscriptionPlanProvider } from "@/contexts/SubscriptionPlanContext";
 import { canUseActiveTimer, getAiDailyCap } from "@/lib/permissions";
 import { ensureSubscriptionAndGetPlan } from "@/lib/subscription/plan";
 import { showSendFeedbackNavLink } from "@/lib/nav-feedback";
+import { FeedbackPopup } from "@/components/feedback/FeedbackPopup";
 
 /** Auth + cookies keep this segment dynamic; no explicit force-dynamic needed. */
 const ENABLE_LINK_PREFETCH = process.env.NODE_ENV === "production";
@@ -148,6 +149,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       </main>
       <AppDeferredFeatures enableLinkPrefetch={ENABLE_LINK_PREFETCH} />
       <LazyAiCreateClientAssistant canUseAi={canUseAi} />
+      <FeedbackPopup enabled={sendFeedbackInNav} />
     </div>
   );
 }

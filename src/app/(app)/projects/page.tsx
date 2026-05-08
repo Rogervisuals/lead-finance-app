@@ -63,7 +63,13 @@ function projectsListHref(opts: { page: number; client?: string; error?: string 
 export default async function ProjectsPage({
   searchParams,
 }: {
-  searchParams?: { error?: string; client?: string; page?: string; added?: string };
+  searchParams?: {
+    error?: string;
+    client?: string;
+    page?: string;
+    added?: string;
+    saved?: string;
+  };
 }) {
   const locale = getServerLocale();
   const ui = getUi(locale);
@@ -158,6 +164,12 @@ export default async function ProjectsPage({
       {searchParams?.added === "1" ? (
         <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
           {ui.projects.addedSuccess}
+        </div>
+      ) : null}
+
+      {searchParams?.saved === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.common.changesSaved}
         </div>
       ) : null}
 

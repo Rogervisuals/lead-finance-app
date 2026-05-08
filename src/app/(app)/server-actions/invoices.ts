@@ -6,6 +6,7 @@ import { convertToBase } from "@/lib/finance/income-currency";
 import { fetchFxRateFromProviders } from "@/lib/finance/exchange-rate";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 import { assertInvoiceFeaturesAllowed } from "@/lib/subscription/plan";
+import { parseInvoiceLocale } from "@/lib/invoices/invoice-locale";
 
 function isoToday() {
   return new Date().toISOString().slice(0, 10);
@@ -30,6 +31,13 @@ function round2(n: number) {
 function parseInvoiceCurrency(raw: string | null | undefined): "EUR" | "USD" {
   const c = String(raw ?? "EUR").trim().toUpperCase();
   return c === "USD" ? "USD" : "EUR";
+}
+
+function parseQuantityUnit(raw: unknown): "qty" | "hours" {
+  const s = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  return s === "hours" ? "hours" : "qty";
 }
 
 async function amountToBaseForIncome(
@@ -57,12 +65,13 @@ export async function createInvoiceAction(formData: FormData) {
 
   await assertInvoiceFeaturesAllowed(supabase, user.id);
 
-  const returnTo = String(formData.get("return_to") ?? "/projects").trim();
   const projectId = String(formData.get("project_id") ?? "").trim();
-  if (!projectId) redirect(returnTo);
+  if (!projectId) return { ok: false, message: "Missing project id." } as const;
 
   const unitPriceExVat = toNumber(formData.get("amount_ex_vat"));
-  if (!unitPriceExVat || unitPriceExVat <= 0) redirect(returnTo);
+  if (!unitPriceExVat || unitPriceExVat <= 0) {
+    return { ok: false, message: "Unit price must be greater than 0." } as const;
+  }
 
   let quantity = toNumber(formData.get("quantity"));
   if (quantity == null || quantity <= 0) quantity = 1;
@@ -80,7 +89,7 @@ export async function createInvoiceAction(formData: FormData) {
     .eq("user_id", user.id)
     .single();
 
-  if (!project) redirect(returnTo);
+  if (!project) return { ok: false, message: "Project not found." } as const;
 
   const vatEnabled = readBooleanCheckbox(formData, "vat_enabled");
   const vatPercentageRaw = toNumber(formData.get("vat_percentage"));
@@ -95,6 +104,15 @@ export async function createInvoiceAction(formData: FormData) {
   const description = descriptionRaw.length ? descriptionRaw.slice(0, 4000) : null;
   const currency = parseInvoiceCurrency(String(formData.get("currency") ?? ""));
 
+  const thankYouRaw = String(formData.get("thank_you_message") ?? "").trim();
+  const thank_you_message = thankYouRaw.length ? thankYouRaw.slice(0, 4000) : null;
+
+  const paymentRaw = String(formData.get("payment_information") ?? "").trim();
+  const payment_information = paymentRaw.length ? paymentRaw.slice(0, 8000) : null;
+
+  const invoice_locale = parseInvoiceLocale(formData.get("invoice_locale"));
+  const quantity_unit = parseQuantityUnit(formData.get("quantity_unit"));
+
   const { error: insertError } = await supabase.from("invoices").insert({
     project_id: project.id,
     client_id: project.client_id,
@@ -107,14 +125,56 @@ export async function createInvoiceAction(formData: FormData) {
     description,
     quantity,
     currency,
+    thank_you_message,
+    payment_information,
+    invoice_locale,
+    quantity_unit,
   });
 
   if (insertError) {
-    const sep = returnTo.includes("?") ? "&" : "?";
-    redirect(`${returnTo}${sep}invoice_create_error=1`);
+    return { ok: false, message: insertError.message } as const;
   }
 
-  redirect(returnTo);
+  return { ok: true } as const;
+}
+
+export type SaveInvoiceFooterDefaultsResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+/** Persist thank-you + payment blocks as defaults for the Create invoice form. */
+export async function saveInvoiceFooterDefaultsAction(
+  formData: FormData
+): Promise<SaveInvoiceFooterDefaultsResult> {
+  const supabase = createSupabaseServerActionClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "Not signed in" };
+
+  await assertInvoiceFeaturesAllowed(supabase, user.id);
+
+  await getOrCreateUserFinancialSettings(user.id);
+
+  const thankYou = String(formData.get("thank_you_message") ?? "")
+    .trim()
+    .slice(0, 4000);
+  const payment = String(formData.get("payment_information") ?? "")
+    .trim()
+    .slice(0, 8000);
+
+  const { error } = await supabase.from("user_settings").upsert(
+    {
+      user_id: user.id,
+      default_invoice_thank_you_message: thankYou.length ? thankYou : null,
+      default_invoice_payment_information: payment.length ? payment : null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" }
+  );
+
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
 }
 
 export async function toggleInvoiceStatusAction(formData: FormData) {

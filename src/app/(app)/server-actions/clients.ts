@@ -118,7 +118,7 @@ export async function updateClientAction(formData: FormData) {
     await supabase.from("clients").update(base).eq("id", id).eq("user_id", user.id);
   }
 
-  redirect("/clients");
+  redirect("/clients?saved=1");
 }
 
 export async function deleteClientAction(formData: FormData) {

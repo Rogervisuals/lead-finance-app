@@ -121,7 +121,7 @@ export async function updateExpenseAction(formData: FormData) {
     .eq("id", id)
     .eq("user_id", user.id);
 
-  redirect("/expenses");
+  redirect("/expenses?saved=1");
 }
 
 export async function deleteExpenseAction(formData: FormData) {

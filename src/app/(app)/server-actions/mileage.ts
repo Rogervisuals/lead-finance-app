@@ -149,7 +149,7 @@ export async function updateMileageAction(formData: FormData) {
     .eq("id", id)
     .eq("user_id", user.id);
 
-  redirect("/business/mileage");
+  redirect("/business/mileage?saved=1");
 }
 
 export async function deleteMileageAction(formData: FormData) {

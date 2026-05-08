@@ -79,7 +79,7 @@ function mileageMatchesTemplateIdentity(
 export default async function MileagePage({
   searchParams,
 }: {
-  searchParams?: { template_error?: string; range?: string };
+  searchParams?: { template_error?: string; range?: string; saved?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -262,6 +262,12 @@ export default async function MileagePage({
           </form>
         </div>
       </div>
+
+      {searchParams?.saved === "1" ? (
+        <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+          {ui.common.changesSaved}
+        </div>
+      ) : null}
 
       <section className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-sky-900/40 bg-zinc-900/20 p-4">

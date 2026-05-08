@@ -77,7 +77,7 @@ export async function updateBusinessExpenseAction(formData: FormData) {
     .eq("id", id)
     .eq("user_id", user.id);
 
-  redirect("/business/general-expenses");
+  redirect("/business/general-expenses?saved=1");
 }
 
 export async function deleteBusinessExpenseAction(formData: FormData) {

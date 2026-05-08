@@ -81,7 +81,7 @@ export async function updateProjectAction(formData: FormData) {
     .eq("id", id)
     .eq("user_id", user.id);
 
-  redirect("/projects");
+  redirect("/projects?saved=1");
 }
 
 export async function deleteProjectAction(formData: FormData) {

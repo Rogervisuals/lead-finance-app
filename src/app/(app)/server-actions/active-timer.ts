@@ -15,7 +15,13 @@ function roundTo2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
-/** Revalidate the app shell (header timer) without a full `redirect()` navigation. */
+/**
+ * Invalidate caches after timer start/stop.
+ * Use `page` (not `layout`) for the current route so we avoid revalidating the entire
+ * app layout tree on every stop — that was very slow on heavy pages. `/hours` is
+ * invalidated explicitly because stopping writes a hours row. `router.refresh()` on
+ * the client still refetches the shell for the active URL.
+ */
 function revalidateAfterTimerChange(returnTo: string) {
   const raw = (returnTo || "/dashboard").trim() || "/dashboard";
   let pathname = "/dashboard";
@@ -27,7 +33,8 @@ function revalidateAfterTimerChange(returnTo: string) {
     pathname = raw.split("?")[0]?.trim() || "/dashboard";
   }
   if (!pathname.startsWith("/")) pathname = `/${pathname}`;
-  revalidatePath(pathname, "layout");
+  revalidatePath(pathname, "page");
+  revalidatePath("/hours", "page");
 }
 
 async function validateClientAndProject(
@@ -111,7 +118,18 @@ export async function startActiveTimerAction(formData: FormData) {
   revalidateAfterTimerChange(returnTo);
 }
 
-export async function stopActiveTimerAction(formData: FormData) {
+export type StopActiveTimerResult =
+  | { ok: true }
+  | { ok: false; reason: "no_timer" | "zero_duration" | "save_failed" };
+
+/**
+ * Stops the active timer and inserts a hours row when duration is long enough.
+ * Returns a result object (no `redirect` on failure) so the client can show the
+ * correct message; still `redirect("/login")` when not authenticated.
+ */
+export async function stopActiveTimerAction(
+  formData: FormData
+): Promise<StopActiveTimerResult> {
   const supabase = createSupabaseServerActionClient();
   const {
     data: { user },
@@ -127,7 +145,9 @@ export async function stopActiveTimerAction(formData: FormData) {
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (!row) redirect(returnTo);
+  if (!row) {
+    return { ok: false, reason: "no_timer" };
+  }
 
   const end = new Date();
   const start = new Date(row.start_time);
@@ -136,7 +156,8 @@ export async function stopActiveTimerAction(formData: FormData) {
 
   if (hours <= 0) {
     await supabase.from("active_timer").delete().eq("id", row.id).eq("user_id", user.id);
-    redirect(`${returnTo}?timer_error=zero_duration`);
+    revalidateAfterTimerChange(returnTo);
+    return { ok: false, reason: "zero_duration" };
   }
 
   const { error: hoursErr } = await supabase.from("hours").insert({
@@ -150,10 +171,11 @@ export async function stopActiveTimerAction(formData: FormData) {
   });
 
   if (hoursErr) {
-    redirect(`${returnTo}?timer_error=save_failed`);
+    return { ok: false, reason: "save_failed" };
   }
 
   await supabase.from("active_timer").delete().eq("id", row.id).eq("user_id", user.id);
 
   revalidateAfterTimerChange(returnTo);
+  return { ok: true };
 }
