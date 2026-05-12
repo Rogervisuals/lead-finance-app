@@ -55,7 +55,6 @@ export default async function RootLayout({
           as="image"
           href="/favicon.ico"
           type="image/x-icon"
-          // @ts-expect-error fetchPriority is supported by browsers
           fetchPriority="high"
         />
         <script
