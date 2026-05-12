@@ -1,6 +1,6 @@
 export const LOCALE_COOKIE = "lf_locale";
 
-export const SUPPORTED_LOCALES = ["en", "es"] as const;
+export const SUPPORTED_LOCALES = ["en", "es", "nl"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = "en";
@@ -10,9 +10,12 @@ export function parseLocale(raw: string | undefined | null): Locale {
     .trim()
     .toLowerCase();
   if (s === "es") return "es";
+  if (s === "nl") return "nl";
   return "en";
 }
 
 export function getHtmlLang(locale: Locale): string {
-  return locale === "es" ? "es" : "en";
+  if (locale === "es") return "es";
+  if (locale === "nl") return "nl";
+  return "en";
 }

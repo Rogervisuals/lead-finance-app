@@ -101,7 +101,7 @@ export function DashboardBlockHint({
         aria-expanded={visible}
         aria-haspopup="true"
         aria-controls={visible ? tooltipId : undefined}
-        className="relative z-10 flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700/70 bg-zinc-900/60 text-zinc-500 outline-none transition-colors hover:border-zinc-600 hover:bg-zinc-800/70 hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-sky-500/35"
+        className="relative z-10 flex h-7 w-7 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950/40 text-zinc-500 outline-none transition-colors hover:border-zinc-700 hover:bg-zinc-950/60 hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-sky-500/35"
         onPointerEnter={enterHint}
         onPointerLeave={scheduleHoverEnd}
         onPointerDown={(e) => {

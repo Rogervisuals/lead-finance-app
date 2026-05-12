@@ -111,7 +111,44 @@ const es: UiCopy = {
   },
 };
 
+const nl: UiCopy = {
+  nav: {
+    dashboard: "Dashboard",
+    clients: "Klanten",
+    projects: "Projecten",
+    finance: "Financiën",
+    business: "Zakelijk",
+    income: "Inkomsten",
+    expenses: "Uitgaven",
+    hours: "Uren",
+    invoices: "Facturen",
+    generalExpenses: "Algemene kosten",
+    mileage: "Kilometervergoeding",
+    welcome: "Welkom",
+    profileAndSettings: "Profiel & instellingen",
+    profile: "Profiel",
+    settings: "Instellingen",
+    theme: "Thema",
+    sendFeedback: "Feedback sturen",
+    feedbackInbox: "Feedback-inbox",
+    openMenu: "Menu openen",
+    closeMenu: "Menu sluiten",
+    language: "Taal",
+  },
+  auth: {
+    signOut: "Uitloggen",
+    signingOut: "Bezig met uitloggen...",
+  },
+  footer: {
+    rights: "© 2026 Rogervisuals. Alle rechten voorbehouden.",
+    contact: "Contact",
+    privacy: "Privacy",
+    terms: "Voorwaarden",
+  },
+};
+
 export const uiByLocale: Record<Locale, UiCopy> = {
   en,
   es,
+  nl,
 };

@@ -32,6 +32,7 @@ export function LanguageSwitcher({
       >
         <option value="en">English</option>
         <option value="es">Español</option>
+        <option value="nl">Nederlands</option>
       </select>
     </form>
   );

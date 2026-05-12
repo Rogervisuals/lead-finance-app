@@ -27,6 +27,8 @@ export const metadata: Metadata = {
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
       { url: "/favicon-64x64.png", sizes: "64x64", type: "image/png" },
     ],
+    shortcut: ["/favicon.ico"],
+    apple: [{ url: "/favicon-64x64.png", sizes: "64x64", type: "image/png" }],
   },
 };
 
@@ -48,6 +50,14 @@ export default async function RootLayout({
   return (
     <html lang={getHtmlLang(locale)} suppressHydrationWarning className="h-full">
       <head>
+        <link
+          rel="preload"
+          as="image"
+          href="/favicon.ico"
+          type="image/x-icon"
+          // @ts-expect-error fetchPriority is supported by browsers
+          fetchPriority="high"
+        />
         <script
           dangerouslySetInnerHTML={{ __html: getThemeBootstrapInlineScript() }}
         />
