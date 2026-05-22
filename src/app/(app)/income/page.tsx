@@ -94,7 +94,7 @@ export default async function IncomePage({
       supabase
         .from("income")
         .select(
-          "id,date,amount_original,amount_converted,currency,description,client_id,project_id,created_at"
+          "id,date,amount_original,amount_converted,currency,description,client_id,project_id,created_at,approx_amount,approx_currency"
         )
         .eq("user_id", user.id)
         .order("date", { ascending: false })

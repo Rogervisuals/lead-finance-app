@@ -3,10 +3,12 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerActionClient } from "@/lib/supabase/server";
 import { convertToBase } from "@/lib/finance/income-currency";
+import { computeIncomeApproxSnapshot } from "@/lib/finance/income-approx-display";
 import { fetchFxRateFromProviders } from "@/lib/finance/exchange-rate";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 import { assertInvoiceFeaturesAllowed } from "@/lib/subscription/plan";
 import { parseInvoiceLocale } from "@/lib/invoices/invoice-locale";
+import { clientHasInvoiceAddressDetails } from "@/lib/invoices/client-invoice-address";
 
 function isoToday() {
   return new Date().toISOString().slice(0, 10);
@@ -90,6 +92,27 @@ export async function createInvoiceAction(formData: FormData) {
     .single();
 
   if (!project) return { ok: false, message: "Project not found." } as const;
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("address,postal_code,city")
+    .eq("id", project.client_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (
+    !clientHasInvoiceAddressDetails({
+      address: client?.address,
+      postal_code: client?.postal_code,
+      city: client?.city,
+    })
+  ) {
+    return {
+      ok: false,
+      message:
+        "Add this client's invoice address (street, postal code, or city) before creating an invoice.",
+    } as const;
+  }
 
   const vatEnabled = readBooleanCheckbox(formData, "vat_enabled");
   const vatPercentageRaw = toNumber(formData.get("vat_percentage"));
@@ -266,6 +289,11 @@ export async function toggleInvoiceStatusAction(formData: FormData) {
           const sep = returnTo.includes("?") ? "&" : "?";
           redirect(`${returnTo}${sep}invoice_fx_error=1`);
         }
+        const approx = await computeIncomeApproxSnapshot({
+          amountOriginal: amount,
+          entryCurrency: invCurrency,
+          comparisonCurrency: settings.comparison_currency,
+        });
         await supabase.from("income").insert({
           user_id: user.id,
           client_id: project.client_id,
@@ -275,6 +303,8 @@ export async function toggleInvoiceStatusAction(formData: FormData) {
           currency: invCurrency,
           amount_converted: converted.amount_converted,
           exchange_rate: converted.exchange_rate,
+          approx_amount: approx?.approx_amount ?? null,
+          approx_currency: approx?.approx_currency ?? null,
           description: incomeDescription,
           invoice_id: invoiceId,
         });

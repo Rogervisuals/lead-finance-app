@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { createSupabaseBrowserClient, getBrowserUserOnce } from "@/lib/supabase/client";
+import { computeIncomeApproxSnapshot } from "@/lib/finance/income-approx-display";
 import {
   mileageStoredDistanceKm,
   normalizeMileageLocationKey,
@@ -1255,6 +1256,19 @@ export function AiCreateClientAssistant({
       const parsedDate = normalizeIsoDate(aiPayload.date);
       const description = trimOrNull(aiPayload.description);
 
+      const { data: finRow } = await supabase
+        .from("user_settings")
+        .select("comparison_currency")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const comparisonCurrency =
+        String(finRow?.comparison_currency ?? "USD").trim().toUpperCase() || "USD";
+      const approx = await computeIncomeApproxSnapshot({
+        amountOriginal: amount,
+        entryCurrency: currency,
+        comparisonCurrency,
+      });
+
       const { error: incomeError } = await supabase.from("income").insert({
         user_id: userId,
         client_id: client.id,
@@ -1265,6 +1279,8 @@ export function AiCreateClientAssistant({
         amount_converted: amount,
         date: parsedDate,
         description,
+        approx_amount: approx?.approx_amount ?? null,
+        approx_currency: approx?.approx_currency ?? null,
       });
       if (incomeError) throw new Error(incomeError.message || "Income insert failed.");
 

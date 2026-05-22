@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -46,7 +47,9 @@ type InvoiceLocale = (typeof INVOICE_LANGUAGES)[number]["value"];
 type QuantityUnit = "qty" | "hours";
 
 export function CreateInvoiceModal({
+  clientId,
   clientName,
+  hasClientInvoiceAddress,
   projectName,
   projectId,
   vatPercentageDefault,
@@ -58,7 +61,10 @@ export function CreateInvoiceModal({
   createInvoiceAction,
   saveInvoiceFooterDefaultsAction,
 }: {
+  clientId: string;
   clientName: string;
+  /** True when the client has at least one invoice address field filled. */
+  hasClientInvoiceAddress: boolean;
   projectName: string;
   projectId: string;
   vatPercentageDefault: number;
@@ -78,6 +84,8 @@ export function CreateInvoiceModal({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [addressPromptOpen, setAddressPromptOpen] = useState(false);
+  const clientEditHref = `/clients/${clientId}/edit?return_to=${encodeURIComponent(returnTo)}`;
   const [amount, setAmount] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [quantityUnit, setQuantityUnit] = useState<QuantityUnit>("qty");
@@ -132,6 +140,15 @@ export function CreateInvoiceModal({
 
   function close() {
     setOpen(false);
+    setAddressPromptOpen(false);
+  }
+
+  function openCreateFlow() {
+    if (!hasClientInvoiceAddress) {
+      setAddressPromptOpen(true);
+      return;
+    }
+    setOpen(true);
   }
 
   function saveFooterDefaults() {
@@ -178,11 +195,61 @@ export function CreateInvoiceModal({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openCreateFlow}
         className="rounded-md border border-zinc-800 bg-zinc-950/20 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-950/40"
       >
         Create Invoice
       </button>
+
+      {addressPromptOpen
+        ? createPortal(
+            <div className="fixed inset-0 z-[130] flex items-end justify-center overflow-y-auto overscroll-y-contain p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] sm:items-center sm:py-8">
+              <button
+                type="button"
+                aria-label="Close"
+                className="absolute inset-0 bg-zinc-950/80"
+                onClick={() => setAddressPromptOpen(false)}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="invoice-address-required-title"
+                className="relative z-10 w-full max-w-md rounded-2xl border border-amber-900/50 bg-zinc-900/95 p-5 shadow-2xl shadow-black/50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3
+                  id="invoice-address-required-title"
+                  className="text-lg font-semibold text-zinc-100"
+                >
+                  Client address needed
+                </h3>
+                <p className="mt-3 text-sm text-zinc-300">
+                  <span className="font-medium text-zinc-200">{clientName}</span> does
+                  not have invoice address details yet (street address, postal code, or
+                  city). Add them before creating an invoice for{" "}
+                  <span className="font-medium text-zinc-200">{projectName}</span>.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <Link
+                    href={clientEditHref}
+                    className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500"
+                    onClick={() => setAddressPromptOpen(false)}
+                  >
+                    Fill in client details
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setAddressPromptOpen(false)}
+                    className="rounded-md border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-950/60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       {open
         ? createPortal(

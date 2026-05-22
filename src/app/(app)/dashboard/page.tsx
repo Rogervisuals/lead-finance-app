@@ -166,7 +166,7 @@ export default async function DashboardPage({
       ? supabase
           .from("income")
           .select(
-            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
+            "id,amount_original,amount_converted,currency,date,description,project_id,client_id,approx_amount,approx_currency"
           )
           .eq("user_id", userId)
           .order("date", { ascending: false })
@@ -174,7 +174,7 @@ export default async function DashboardPage({
       : supabase
           .from("income")
           .select(
-            "id,amount_original,amount_converted,currency,date,description,project_id,client_id"
+            "id,amount_original,amount_converted,currency,date,description,project_id,client_id,approx_amount,approx_currency"
           )
           .eq("user_id", userId)
           .gte("date", isoStart!)

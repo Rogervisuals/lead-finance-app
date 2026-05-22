@@ -15,8 +15,10 @@ export const dynamic = "force-dynamic";
 
 export default async function EditClientPage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams?: { return_to?: string };
 }) {
   const supabase = createSupabaseServerClient();
   const {
@@ -32,6 +34,8 @@ export default async function EditClientPage({
 
   if (!client) redirect("/clients");
 
+  const returnTo = String(searchParams?.return_to ?? "").trim();
+
   return (
     <div className="space-y-6">
       <div>
@@ -44,6 +48,7 @@ export default async function EditClientPage({
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
         <form action={updateClientAction} className="grid gap-3 sm:grid-cols-2">
           <input type="hidden" name="id" value={client.id} />
+          {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
           <label className="space-y-1">
             <span className="text-sm text-zinc-300">Name *</span>
             <input
@@ -115,20 +120,41 @@ export default async function EditClientPage({
             />
           </label>
 
-          <label className="space-y-1 sm:col-span-2">
-            <span className="text-sm text-zinc-300">
-              Address (for invoices only)
-            </span>
-            <textarea
-              name="address"
-              rows={3}
-              defaultValue={(client as any).address ?? ""}
-              className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
-            />
+          <fieldset className="space-y-3 sm:col-span-2">
+            <legend className="text-sm font-medium text-zinc-300">
+              Invoice address
+            </legend>
             <p className="text-xs text-zinc-500">
-              This address will only appear on invoices
+              Shown on invoices only. Street name and house number go in Address.
             </p>
-          </label>
+            <label className="block space-y-1">
+              <span className="text-sm text-zinc-300">Address</span>
+              <input
+                name="address"
+                defaultValue={client.address ?? ""}
+                placeholder="e.g. Main Street 42"
+                className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1">
+                <span className="text-sm text-zinc-300">Postal code</span>
+                <input
+                  name="postal_code"
+                  defaultValue={client.postal_code ?? ""}
+                  className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm text-zinc-300">City</span>
+                <input
+                  name="city"
+                  defaultValue={client.city ?? ""}
+                  className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
+                />
+              </label>
+            </div>
+          </fieldset>
 
           <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
             <button

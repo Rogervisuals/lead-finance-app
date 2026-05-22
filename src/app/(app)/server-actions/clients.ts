@@ -64,6 +64,8 @@ export async function createClientAction(formData: FormData) {
   const company_id = companyIdRaw || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const address = String(formData.get("address") ?? "").trim() || null;
+  const postal_code = String(formData.get("postal_code") ?? "").trim() || null;
+  const city = String(formData.get("city") ?? "").trim() || null;
 
   // Omit `company_id` when unset so DBs without the migration column still accept inserts.
   await supabase.from("clients").insert({
@@ -74,6 +76,8 @@ export async function createClientAction(formData: FormData) {
     notes,
     ...(company_id ? { company_id } : {}),
     address,
+    postal_code,
+    city,
   });
 
   redirect("/clients?added=1");
@@ -95,6 +99,8 @@ export async function updateClientAction(formData: FormData) {
   const company_id = companyIdRaw || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const address = String(formData.get("address") ?? "").trim() || null;
+  const postal_code = String(formData.get("postal_code") ?? "").trim() || null;
+  const city = String(formData.get("city") ?? "").trim() || null;
 
   const base = {
     name,
@@ -102,6 +108,8 @@ export async function updateClientAction(formData: FormData) {
     company: companyLegacy,
     notes,
     address,
+    postal_code,
+    city,
   };
   const withCompany = {
     ...base,
@@ -118,7 +126,8 @@ export async function updateClientAction(formData: FormData) {
     await supabase.from("clients").update(base).eq("id", id).eq("user_id", user.id);
   }
 
-  redirect("/clients?saved=1");
+  const returnTo = String(formData.get("return_to") ?? "").trim() || "/clients";
+  redirect(`${returnTo}${returnTo.includes("?") ? "&" : "?"}saved=1`);
 }
 
 export async function deleteClientAction(formData: FormData) {

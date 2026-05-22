@@ -6,6 +6,7 @@ import {
   createSupabaseServerClient,
 } from "@/lib/supabase/server";
 import { parseCurrencyAmountFromForm } from "@/lib/finance/income-currency";
+import { computeIncomeApproxSnapshot } from "@/lib/finance/income-approx-display";
 import { getOrCreateUserFinancialSettings } from "@/lib/user-settings";
 
 function toNullableString(v: FormDataEntryValue | null) {
@@ -60,6 +61,12 @@ export async function createIncomeAction(formData: FormData) {
   const parsed = parseCurrencyAmountFromForm(formData, settings.base_currency);
   if (!parsed) redirect("/income?error=exchange_rate");
 
+  const approx = await computeIncomeApproxSnapshot({
+    amountOriginal: parsed.amount_original,
+    entryCurrency: parsed.currency,
+    comparisonCurrency: settings.comparison_currency,
+  });
+
   const client_id = String(formData.get("client_id") ?? "").trim();
   let project_id = toNullableString(formData.get("project_id"));
   project_id = await normalizeProjectForClient({
@@ -81,6 +88,8 @@ export async function createIncomeAction(formData: FormData) {
     currency: parsed.currency,
     amount_converted: parsed.amount_converted,
     exchange_rate: parsed.exchange_rate,
+    approx_amount: approx?.approx_amount ?? null,
+    approx_currency: approx?.approx_currency ?? null,
     description,
   });
 
@@ -97,6 +106,12 @@ export async function updateIncomeAction(formData: FormData) {
   const settings = await getOrCreateUserFinancialSettings(user.id);
   const parsed = parseCurrencyAmountFromForm(formData, settings.base_currency);
   if (!parsed) redirect("/income?error=exchange_rate");
+
+  const approx = await computeIncomeApproxSnapshot({
+    amountOriginal: parsed.amount_original,
+    entryCurrency: parsed.currency,
+    comparisonCurrency: settings.comparison_currency,
+  });
 
   const id = String(formData.get("id") ?? "").trim();
   const client_id = String(formData.get("client_id") ?? "").trim();
@@ -121,6 +136,8 @@ export async function updateIncomeAction(formData: FormData) {
       currency: parsed.currency,
       amount_converted: parsed.amount_converted,
       exchange_rate: parsed.exchange_rate,
+      approx_amount: approx?.approx_amount ?? null,
+      approx_currency: approx?.approx_currency ?? null,
       description,
     })
     .eq("id", id)
@@ -232,6 +249,12 @@ export async function createIncomeFromTemplateAction(formData: FormData) {
   const base = settings.base_currency.trim().toUpperCase() || "EUR";
   const net = Number(template.amount ?? 0);
 
+  const approx = await computeIncomeApproxSnapshot({
+    amountOriginal: net,
+    entryCurrency: base,
+    comparisonCurrency: settings.comparison_currency,
+  });
+
   let project_id = template.project_id ? String(template.project_id) : null;
   project_id = await normalizeProjectForClient({
     supabase,
@@ -249,6 +272,8 @@ export async function createIncomeFromTemplateAction(formData: FormData) {
     currency: base,
     amount_converted: net,
     exchange_rate: 1,
+    approx_amount: approx?.approx_amount ?? null,
+    approx_currency: approx?.approx_currency ?? null,
     description: template.description ?? null,
   });
 

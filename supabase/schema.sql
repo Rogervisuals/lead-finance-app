@@ -130,6 +130,10 @@ alter table public.clients
 
 alter table public.clients add column if not exists tax_enabled boolean not null default true;
 
+alter table public.clients add column if not exists address text;
+alter table public.clients add column if not exists postal_code text;
+alter table public.clients add column if not exists city text;
+
 create index if not exists clients_company_id_idx on public.clients(company_id);
 
 -- =========================
@@ -195,6 +199,8 @@ alter table public.income add column if not exists notes text;
 alter table public.income add column if not exists amount_original numeric(12,2);
 alter table public.income add column if not exists amount_converted numeric(12,2);
 alter table public.income add column if not exists exchange_rate numeric(18,8);
+alter table public.income add column if not exists approx_amount numeric(12, 2);
+alter table public.income add column if not exists approx_currency text;
 
 alter table public.income enable row level security;
 create index if not exists income_user_id_idx on public.income(user_id);

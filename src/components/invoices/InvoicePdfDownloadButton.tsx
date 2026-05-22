@@ -36,6 +36,8 @@ export function InvoicePdfDownloadButton({
     email?: string | null;
     company?: string | null;
     address?: string | null;
+    postal_code?: string | null;
+    city?: string | null;
   };
   project: { name: string; description?: string | null };
   business: {

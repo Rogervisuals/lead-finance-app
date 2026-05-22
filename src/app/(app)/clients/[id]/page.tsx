@@ -329,7 +329,7 @@ export default async function ClientSummaryPage({
   const incomeTo = incomeFrom + INCOME_PAGE_SIZE - 1;
   let incomePageQuery = supabase
     .from("income")
-    .select("id,date,amount_original,amount_converted,currency,description,project_id")
+    .select("id,date,amount_original,amount_converted,currency,description,project_id,approx_amount,approx_currency")
     .eq("client_id", clientId)
     .eq("user_id", user.id);
   if (selectedProject) incomePageQuery = incomePageQuery.eq("project_id", selectedProject);

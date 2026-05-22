@@ -27,7 +27,7 @@ export default async function EditIncomePage({
       supabase
         .from("income")
         .select(
-          "id,client_id,project_id,date,amount_original,currency,exchange_rate,amount_converted,description"
+          "id,client_id,project_id,date,amount_original,currency,exchange_rate,amount_converted,description,approx_amount,approx_currency"
         )
         .eq("id", params.id)
         .eq("user_id", user.id)

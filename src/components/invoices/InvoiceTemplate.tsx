@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { renderAsteriskBold } from "@/lib/invoices/render-asterisk-bold";
 import type { InvoiceLocale } from "@/lib/invoices/invoice-locale";
+import { formatClientPostalCityLine } from "@/lib/invoices/client-invoice-address";
 
 type InvoiceLike = {
   id: string;
@@ -97,6 +98,8 @@ export function InvoiceTemplate({
     email?: string | null;
     company?: string | null;
     address?: string | null;
+    postal_code?: string | null;
+    city?: string | null;
   };
   project: { name: string; description?: string | null };
   business: {
@@ -225,6 +228,10 @@ export function InvoiceTemplate({
 
   const invoiceNo = String(invoice.id).slice(0, 8).toUpperCase();
   const showLine = (v: unknown) => String(v ?? "").trim().length > 0;
+  const clientPostalCity = formatClientPostalCityLine(
+    client.postal_code,
+    client.city
+  );
   const quantityUnit =
     String(invoice.quantity_unit ?? "").trim().toLowerCase() === "hours"
       ? "hours"
@@ -388,22 +395,15 @@ export function InvoiceTemplate({
             {t.billTo}
           </div>
           <div style={{ fontSize: 12, marginTop: 10, color: "#111827" }}>
+            <div style={{ fontWeight: 700 }}>{client.name}</div>
             {showLine(client.company) ? (
-              <div style={{ fontWeight: 700 }}>{client.company}</div>
+              <div style={{ fontWeight: 400 }}>{client.company}</div>
             ) : null}
-            <div style={{ fontWeight: showLine(client.company) ? 400 : 700 }}>
-              {client.name}
-            </div>
-
             {showLine(client.address) ? (
-              <div
-                style={{
-                  color: "#374151",
-                  whiteSpace: "pre-line",
-                }}
-              >
-                {client.address}
-              </div>
+              <div style={{ color: "#374151" }}>{client.address}</div>
+            ) : null}
+            {showLine(clientPostalCity) ? (
+              <div style={{ color: "#374151" }}>{clientPostalCity}</div>
             ) : null}
           </div>
         </div>

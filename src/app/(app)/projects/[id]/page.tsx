@@ -9,6 +9,7 @@ import { canUseInvoiceFeatures } from "@/lib/permissions";
 import { getUserPlanWithClient } from "@/lib/subscription/plan";
 import { EditLabel, DeleteLabel } from "@/components/icons/LabeledIcons";
 import { CreateInvoiceModal } from "@/components/invoices/CreateInvoiceModal";
+import { clientHasInvoiceAddressDetails } from "@/lib/invoices/client-invoice-address";
 import { getServerLocale } from "@/lib/i18n/server";
 import { getUi } from "@/lib/i18n/get-ui";
 import { InvoicePdfDownloadButton } from "@/components/invoices/InvoicePdfDownloadButton";
@@ -76,6 +77,7 @@ export default async function ProjectDetailPage({
   params: { id: string };
   searchParams?: {
     page?: string;
+    saved?: string;
     invoice_fx_error?: string;
     invoice_create_error?: string;
   };
@@ -113,7 +115,7 @@ export default async function ProjectDetailPage({
 
   const { data: clientRow } = await supabase
     .from("clients")
-    .select("id,name,email,company,company_id,address")
+    .select("id,name,email,company,company_id,address,postal_code,city")
     .eq("id", project.client_id)
     .eq("user_id", user.id)
     .single();
@@ -303,10 +305,22 @@ export default async function ProjectDetailPage({
 
       {invoiceFeatures ? (
         <section className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4">
+          {searchParams?.saved === "1" ? (
+            <div className="mb-3 rounded-lg border border-emerald-900/40 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200/95">
+              {ui.common.changesSaved} You can create an invoice now.
+            </div>
+          ) : null}
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-sm font-semibold text-zinc-200">Invoices</h2>
             <CreateInvoiceModal
+              clientId={project.client_id}
               clientName={clientRow?.name ?? "—"}
+              hasClientInvoiceAddress={clientHasInvoiceAddressDetails({
+                address: (clientRow as { address?: string | null })?.address,
+                postal_code: (clientRow as { postal_code?: string | null })
+                  ?.postal_code,
+                city: (clientRow as { city?: string | null })?.city,
+              })}
               projectName={project.name}
               projectId={projectId}
               vatPercentageDefault={settings.vat_percentage ?? 21}
@@ -372,6 +386,8 @@ export default async function ProjectDetailPage({
                                 email: (clientRow as any)?.email ?? null,
                                 company: companyName ?? (clientRow as any)?.company ?? null,
                                 address: (clientRow as any)?.address ?? null,
+                                postal_code: (clientRow as any)?.postal_code ?? null,
+                                city: (clientRow as any)?.city ?? null,
                               }}
                               project={{ name: project.name, description: null }}
                               business={{
